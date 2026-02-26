@@ -32,8 +32,15 @@ describe('Config Loader', () => {
     });
 
     it('overrides audit output via CLI flag', () => {
-      const config = loadConfig(testRoot, { auditOutput: 'stdout' });
-      expect(config.audit.output).toBe('stdout');
+      const config = loadConfig(testRoot, { auditOutput: 'stderr' });
+      expect(config.audit.output).toBe('stderr');
+    });
+
+    it('updates limits when preset changes to standard', () => {
+      const config = loadConfig(testRoot, { preset: 'standard' });
+      expect(config.limits.maxResultCount).toBe(100);
+      expect(config.limits.maxFileReadLines).toBe(1000);
+      expect(config.limits.maxWriteBytes).toBe(262144);
     });
   });
 

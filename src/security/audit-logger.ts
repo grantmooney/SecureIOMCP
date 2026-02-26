@@ -1,10 +1,12 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { AuditLogEntry, AuditRedaction, AuditSeverity } from '../types/errors.js';
+import { AuditLogEntry, AuditRedaction, AuditSeverity, ErrorCode } from '../types/errors.js';
+
+export type AuditOutput = 'file' | 'stderr' | 'none';
 
 export interface AuditLogOptions {
-  output: 'file' | 'stdout' | 'none';
+  output: AuditOutput;
   path: string;
   maxSizeMB?: number;
 }
@@ -16,15 +18,15 @@ export interface AuditLogInput {
   access_denied: boolean;
   severity: AuditSeverity;
   duration_ms: number;
-  error?: string;
+  error?: ErrorCode;
 }
 
 export class AuditLogger {
   private options: AuditLogOptions;
 
-  constructor(options: Partial<AuditLogOptions> & { output: string }) {
+  constructor(options: { output: AuditOutput; path?: string; maxSizeMB?: number }) {
     this.options = {
-      output: options.output as 'file' | 'stdout' | 'none',
+      output: options.output,
       path: options.path ?? '.secureio/audit.log',
       maxSizeMB: options.maxSizeMB ?? 50,
     };
@@ -41,14 +43,14 @@ export class AuditLogger {
       access_denied: input.access_denied,
       severity: input.severity,
       duration_ms: input.duration_ms,
-      ...(input.error ? { error: input.error as AuditLogEntry['error'] } : {}),
+      ...(input.error ? { error: input.error } : {}),
     };
 
     const line = JSON.stringify(entry) + '\n';
 
     if (this.options.output === 'file') {
       await this.writeToFile(line);
-    } else if (this.options.output === 'stdout') {
+    } else if (this.options.output === 'stderr') {
       process.stderr.write(line);
     }
   }

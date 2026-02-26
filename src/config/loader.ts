@@ -7,7 +7,7 @@ import { getDefaultConfig, STRICT_LIMITS, STANDARD_LIMITS, LIMITS_CEILINGS } fro
 export interface CLIFlags {
   preset?: Preset;
   root?: string;
-  auditOutput?: 'file' | 'stdout' | 'none';
+  auditOutput?: 'file' | 'stderr' | 'none';
 }
 
 export function loadConfig(projectRoot: string, cliFlags: CLIFlags = {}): ResolvedConfig {
@@ -133,6 +133,9 @@ function applyCLIFlags(
     if (canApplyPreset(flags.preset, minimumPreset)) {
       config.preset = flags.preset;
       config.entropyDetection = flags.preset === 'strict';
+      config.limits = flags.preset === 'strict'
+        ? { ...STRICT_LIMITS }
+        : { ...STANDARD_LIMITS };
     }
   }
 

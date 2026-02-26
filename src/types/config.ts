@@ -16,10 +16,10 @@ export interface RedactionConfig {
 }
 
 export interface AuditConfig {
-  output: 'file' | 'stdout' | 'none';
+  output: 'file' | 'stderr' | 'none';
   path: string;
   required?: boolean;
-  minimumOutput?: 'file' | 'stdout';
+  minimumOutput?: 'file' | 'stderr';
 }
 
 export interface LimitsConfig {
@@ -47,7 +47,7 @@ export interface SystemPolicy {
   redaction: RedactionConfig;
   audit: {
     required: boolean;
-    minimumOutput: 'file' | 'stdout';
+    minimumOutput: 'file' | 'stderr';
   };
 }
 
