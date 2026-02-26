@@ -1,0 +1,40 @@
+{
+  "name": "secureio-mcp",
+  "version": "0.1.0",
+  "description": "Secure, token-efficient MCP server for AI agent codebase access",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "secureio-mcp": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:unit": "vitest run tests/unit",
+    "test:integration": "vitest run tests/integration",
+    "test:security": "vitest run tests/security",
+    "test:platform": "vitest run tests/platform",
+    "test:coverage": "vitest run --coverage"
+  },
+  "keywords": [
+    "mcp",
+    "security",
+    "govtech",
+    "ai-agent"
+  ],
+  "author": "Grant Mooney",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "ignore": "^7.0.5",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.2",
+    "@vitest/coverage-v8": "^4.0.18",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
+  }
+}
