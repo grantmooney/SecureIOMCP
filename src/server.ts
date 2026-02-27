@@ -36,7 +36,7 @@ function toMcpResult(result: unknown): { content: { type: 'text'; text: string }
 export function createServer(mw: SecurityMiddleware): McpServer {
   const server = new McpServer({
     name: 'secureio-mcp',
-    version: '0.1.0',
+    version: '0.2.0',
   });
 
   // Read tools

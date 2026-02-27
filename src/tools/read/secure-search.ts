@@ -57,7 +57,11 @@ export async function handleSecureSearch(
   const maxResults = params.max_results ?? mw.config.limits.maxResultCount;
   const offset = params.offset ?? 0;
 
-  const builder = new ResponseBuilder<SearchResult>(mw.config.limits, offset);
+  const builder = new ResponseBuilder<SearchResult>(
+    mw.config.limits,
+    offset,
+    (raw, efficient) => mw.recordSavings(raw, efficient),
+  );
   let totalMatches = 0;
   let skipped = 0;
 
@@ -107,6 +111,15 @@ export async function handleSecureSearch(
         if (!regex.test(line)) continue;
 
         totalMatches++;
+
+        // Track raw bytes for ALL matches (what grep -rn would output)
+        const ctxStart = Math.max(0, i - contextLines);
+        const ctxEnd = Math.min(fileLines.length - 1, i + contextLines);
+        let rawMatchBytes = Buffer.byteLength(filePath, 'utf-8') + 10; // path + line number + separators
+        for (let k = ctxStart; k <= ctxEnd; k++) {
+          rawMatchBytes += Buffer.byteLength(fileLines[k], 'utf-8') + 1;
+        }
+        builder.addRawBytes(rawMatchBytes);
 
         if (skipped < offset) {
           skipped++;

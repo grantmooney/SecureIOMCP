@@ -2,6 +2,17 @@ import { ResponseMeta, SecureResponse } from './types/response.js';
 import { LimitsConfig } from './types/config.js';
 
 /**
+ * Estimates tokens saved given raw and efficient byte counts.
+ * Uses the approximation of 1 token per 4 bytes.
+ */
+export function estimateTokensSaved(rawBytes: number, efficientBytes: number): number {
+  return Math.max(0, Math.floor((rawBytes - efficientBytes) / 4));
+}
+
+/** Callback type for session-level token savings tracking. */
+export type SessionTracker = (rawBytes: number, efficientBytes: number) => number;
+
+/**
  * Generic response builder for constructing paginated, size-limited tool responses.
  * Tracks item count, byte size, line truncation, and redaction counts against
  * configured limits, and produces a standard {@link SecureResponse} envelope.
@@ -25,12 +36,15 @@ export class ResponseBuilder<T> {
   private truncatedLines = 0;
   private redactionCount = 0;
   private currentBytes = 0;
+  private rawBytes = 0;
   private limits: LimitsConfig;
   private constrainedBy?: ResponseMeta['constrained_by'];
+  private sessionTracker?: SessionTracker;
 
-  constructor(limits: LimitsConfig, offset = 0) {
+  constructor(limits: LimitsConfig, offset = 0, sessionTracker?: SessionTracker) {
     this.limits = limits;
     this.offset = offset;
+    this.sessionTracker = sessionTracker;
   }
 
   /** Sets the total number of available results (for pagination metadata). */
@@ -41,6 +55,11 @@ export class ResponseBuilder<T> {
   /** Increments the redaction counter by the given count. */
   addRedactions(count: number): void {
     this.redactionCount += count;
+  }
+
+  /** Accumulates the estimated raw-equivalent byte count for this operation. */
+  addRawBytes(bytes: number): void {
+    this.rawBytes += bytes;
   }
 
   /**
@@ -89,6 +108,13 @@ export class ResponseBuilder<T> {
    * @returns A {@link SecureResponse} containing all added items and metadata
    */
   build(): SecureResponse<T[]> {
+    const efficientBytes = this.currentBytes;
+    const rawBytes = this.rawBytes;
+    const tokensSaved = estimateTokensSaved(rawBytes, efficientBytes);
+    const sessionTokensSaved = this.sessionTracker
+      ? this.sessionTracker(rawBytes, efficientBytes)
+      : 0;
+
     return {
       results: this.items,
       meta: {
@@ -98,7 +124,10 @@ export class ResponseBuilder<T> {
         has_more: this.items.length + this.offset < this.totalAvailable,
         truncated_lines: this.truncatedLines,
         redactions: this.redactionCount,
-        bytes: this.currentBytes,
+        bytes: efficientBytes,
+        raw_bytes: rawBytes,
+        tokens_saved: tokensSaved,
+        session_tokens_saved: sessionTokensSaved,
         ...(this.constrainedBy ? { constrained_by: this.constrainedBy } : {}),
       },
     };

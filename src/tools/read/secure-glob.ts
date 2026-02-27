@@ -33,7 +33,11 @@ export async function handleSecureGlob(
   const startTime = Date.now();
   const searchRoot = params.path ?? '.';
   const offset = params.offset ?? 0;
-  const builder = new ResponseBuilder<GlobResult>(mw.config.limits, offset);
+  const builder = new ResponseBuilder<GlobResult>(
+    mw.config.limits,
+    offset,
+    (raw, efficient) => mw.recordSavings(raw, efficient),
+  );
   const skipDirs = new Set(['node_modules', '.git', 'dist', 'build', 'vendor']);
 
   let totalMatches = 0;
@@ -65,6 +69,8 @@ export async function handleSecureGlob(
         if (!globRegex.test(relativePath) && !globRegex.test(entry.name)) continue;
 
         totalMatches++;
+        // Raw bytes: what `find -ls` would output per file (path + stat metadata)
+        builder.addRawBytes(Buffer.byteLength(relativePath, 'utf-8') + 80);
 
         if (skipped < offset) {
           skipped++;

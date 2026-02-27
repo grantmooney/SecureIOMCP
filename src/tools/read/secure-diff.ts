@@ -1,6 +1,7 @@
 import { SecurityMiddleware } from '../../security/middleware.js';
 import { SecureResponse } from '../../types/response.js';
 import { SecureIOError } from '../../types/errors.js';
+import { estimateTokensSaved } from '../../response.js';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
@@ -84,6 +85,12 @@ export async function handleSecureDiff(
     duration_ms: Date.now() - startTime,
   });
 
+  // Raw bytes: full git diff output before redaction
+  const rawBytes = Buffer.byteLength(rawDiff, 'utf-8');
+  const efficientBytes = Buffer.byteLength(redactedDiff, 'utf-8');
+  const tokensSaved = estimateTokensSaved(rawBytes, efficientBytes);
+  const sessionTokensSaved = mw.recordSavings(rawBytes, efficientBytes);
+
   return {
     results: {
       diff: redactedDiff,
@@ -97,7 +104,10 @@ export async function handleSecureDiff(
       has_more: false,
       truncated_lines: 0,
       redactions: redactedHunks,
-      bytes: Buffer.byteLength(redactedDiff, 'utf-8'),
+      bytes: efficientBytes,
+      raw_bytes: rawBytes,
+      tokens_saved: tokensSaved,
+      session_tokens_saved: sessionTokensSaved,
     },
   };
 }

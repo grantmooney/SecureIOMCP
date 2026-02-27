@@ -11,7 +11,7 @@
 
 SecureIOMCP is a TypeScript MCP server that provides AI agents with secure, token-efficient, read-write access to codebases. It sits between any MCP-compatible agent (Claude Code, Cursor, Copilot) and the filesystem, enforcing redaction, access control, and result sizing on every operation.
 
-**Target audience:** GovTech development teams using AI coding agents.
+**Target audience:** Development teams using AI coding agents in security-conscious environments.
 
 **Core goals (equal priority):**
 - Prevent AI agents from seeing or exposing secrets (API keys, tokens, credentials, PII)
@@ -182,7 +182,7 @@ SecureIOMCP Server
 - Reports: files that would be blocked, secrets that would be redacted, denylist rules in effect, active preset, custom patterns loaded
 - Summary mode (default): counts by category (e.g., "3 files blocked, 7 secrets detected across 4 files")
 - Verbose mode: file-by-file details with line numbers and pattern categories (but never the secret values themselves)
-- Essential for GovTech security team sign-off
+- Essential for security team sign-off
 
 **9. `secure_overview` — Project summary in one call**
 - Params: `path` (optional), `verbose` (boolean, default false)
@@ -340,7 +340,7 @@ Every tool invocation produces a structured JSON log entry:
 3. **Project config** — `.secureiorc` in project root — developer customization
 4. **Built-in defaults** — strict preset, immutable denylist
 
-The system policy file is critical for GovTech deployment. It allows a security team to enforce organization-wide rules (minimum preset level, required denylist patterns, mandatory audit output) that individual projects cannot weaken. Projects can only make settings stricter than the system policy.
+The system policy file is critical for enterprise deployment. It allows a security team to enforce organization-wide rules (minimum preset level, required denylist patterns, mandatory audit output) that individual projects cannot weaken. Projects can only make settings stricter than the system policy.
 
 ### System Policy (`~/.secureio/policy.json`)
 
@@ -725,18 +725,18 @@ Not blocking for v1 but included to establish baselines.
 - **Search:** Pure JavaScript — `fs.createReadStream` + `readline` + regex (no ripgrep dependency)
 - **Testing:** Vitest
 - **Distribution:** npm (`npx secureio-mcp`)
-- **No external binary dependencies** — critical for GovTech environments with strict IT policies
+- **No external binary dependencies** — critical for restricted environments with strict IT policies
 
 ## Decisions and Trade-offs
 
 | Decision | Rationale |
 |---|---|
-| Pure JS search over ripgrep | Zero external deps. GovTech can't always install arbitrary binaries. Performance adequate for project-scale searches. |
+| Pure JS search over ripgrep | Zero external deps. Restricted environments can't always install arbitrary binaries. Performance adequate for project-scale searches. |
 | No symbol lookup in v1 | Regex-based heuristics are fragile and give wrong answers. `secure_search` with function names is more honest. |
 | Extend-only denylist | Prevents misconfiguration from weakening security. Users can only make it stricter. |
 | No "off" mode | If you don't want security, don't use the tool. Eliminates a class of misconfiguration. |
 | stdio transport only | Simplest, most secure. No network exposure. All three target agents support it. |
-| Strict as default preset | GovTech audience requires maximum protection out of the box. Entropy detection false positives are acceptable — missed secrets are not. |
+| Strict as default preset | Security-conscious teams require maximum protection out of the box. Entropy detection false positives are acceptable — missed secrets are not. |
 | System policy overrides project config | Security teams must be able to enforce organization-wide rules that developers cannot weaken. |
 | Sanitized error responses | Preventing information disclosure (CWE-209) to agents that may be under prompt injection. Details go to audit log only. |
 | Audit log on immutable denylist | Prevents agents from tampering with their own audit trail. |
