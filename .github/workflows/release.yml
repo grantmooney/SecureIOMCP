@@ -5,6 +5,9 @@ on:
     types: [closed]
     branches: [main]
 
+permissions:
+  contents: write
+
 jobs:
   release:
     if: github.event.pull_request.merged == true && startsWith(github.event.pull_request.head.ref, 'release/')
@@ -34,7 +37,9 @@ jobs:
 
       - name: Extract version
         id: version
-        run: echo "version=v$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=v${VERSION}" >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
