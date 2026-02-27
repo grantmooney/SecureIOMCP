@@ -5,13 +5,27 @@ import { ResponseBuilder } from '../../response.js';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 
+/** Parameters for the `secure_glob` MCP tool. */
 export interface SecureGlobParams {
+  /** Glob pattern to match files (supports `*`, `**`, `?`) */
   pattern: string;
+  /** Scope search to this subdirectory */
   path?: string;
+  /** Maximum results to return */
   max_results?: number;
+  /** Offset for pagination */
   offset?: number;
 }
 
+/**
+ * Handles the `secure_glob` MCP tool: finds files by glob pattern.
+ * Returns file paths and sizes only (no content). Respects access control
+ * and never returns denylist files. Supports pagination.
+ *
+ * @param mw - Security middleware instance
+ * @param params - Tool parameters including the glob pattern
+ * @returns Paginated list of matching file paths and sizes, or a safe error response
+ */
 export async function handleSecureGlob(
   mw: SecurityMiddleware,
   params: SecureGlobParams,
@@ -89,6 +103,13 @@ export async function handleSecureGlob(
   return builder.build();
 }
 
+/**
+ * Converts a glob pattern to a regular expression.
+ * Supports `**` (any path), `*` (any non-separator), and `?` (single non-separator char).
+ *
+ * @param pattern - Glob pattern to convert
+ * @returns Compiled RegExp for matching against file paths
+ */
 function globToRegex(pattern: string): RegExp {
   let regexStr = pattern
     .replace(/[.+^${}()|[\]\\]/g, '\\$&') // Escape special regex chars (except * and ?)

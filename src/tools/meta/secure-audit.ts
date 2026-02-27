@@ -6,11 +6,24 @@ import fsp from 'node:fs/promises';
 import fs from 'node:fs';
 import path from 'node:path';
 
+/** Parameters for the `secure_audit` MCP tool. */
 export interface SecureAuditParams {
+  /** Scope audit to this subdirectory (default: project root) */
   path?: string;
+  /** Include per-file details with line numbers and categories (default: false) */
   verbose?: boolean;
 }
 
+/**
+ * Handles the `secure_audit` MCP tool: generates a security scan report.
+ * Walks the project tree and reports files blocked by the denylist, total secrets
+ * detected, and files with secrets. In verbose mode, includes per-file details
+ * with redaction line numbers and categories (never the secret values).
+ *
+ * @param mw - Security middleware instance
+ * @param params - Tool parameters
+ * @returns Audit summary with counts and optional per-file details, or a safe error response
+ */
 export async function handleSecureAudit(
   mw: SecurityMiddleware,
   params: SecureAuditParams,

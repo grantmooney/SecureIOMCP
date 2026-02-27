@@ -6,6 +6,7 @@ import { createServer } from './server.js';
 import { handleSecureSelfTest } from './tools/meta/secure-self-test.js';
 import type { Preset } from './types/config.js';
 
+/** Parsed command-line arguments for the SecureIOMCP server. */
 interface ParsedArgs {
   preset?: Preset;
   root?: string;
@@ -14,6 +15,12 @@ interface ParsedArgs {
   help: boolean;
 }
 
+/**
+ * Parses CLI arguments into a structured options object.
+ *
+ * @param argv - Command-line arguments (typically `process.argv.slice(2)`)
+ * @returns Parsed arguments with flags and values
+ */
 function parseArgs(argv: string[]): ParsedArgs {
   const args: ParsedArgs = { selfTest: false, help: false };
 
@@ -41,6 +48,7 @@ function parseArgs(argv: string[]): ParsedArgs {
   return args;
 }
 
+/** Prints the CLI usage/help message to stderr. */
 function printUsage(): void {
   const usage = `SecureIOMCP — Secure, token-efficient MCP server for AI agents
 
@@ -56,6 +64,13 @@ Options:
   process.stderr.write(usage);
 }
 
+/**
+ * Main entry point for the SecureIOMCP server.
+ * Parses CLI arguments, loads layered configuration, creates the security middleware,
+ * and either runs the self-test suite or starts the MCP server with stdio transport.
+ *
+ * @param argv - Command-line arguments (defaults to `process.argv.slice(2)`)
+ */
 export async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
   const args = parseArgs(argv);
 

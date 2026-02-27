@@ -3,24 +3,46 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { AuditLogEntry, AuditRedaction, AuditSeverity, ErrorCode } from '../types/errors.js';
 
+/** Audit log output destination. */
 export type AuditOutput = 'file' | 'stderr' | 'none';
 
+/** Configuration options for the audit logger. */
 export interface AuditLogOptions {
+  /** Where to write audit entries */
   output: AuditOutput;
+  /** File path for file-based output */
   path: string;
+  /** Maximum log file size in MB before rotation (default: 50) */
   maxSizeMB?: number;
 }
 
+/** Input data for creating an audit log entry from a tool invocation. */
 export interface AuditLogInput {
+  /** Name of the MCP tool invoked */
   tool: string;
+  /** Tool parameters (content fields will be hashed) */
   params: Record<string, unknown>;
+  /** Secrets that were redacted during this operation */
   redactions: AuditRedaction[];
+  /** Whether the request was denied by access control */
   access_denied: boolean;
+  /** Severity level for SIEM filtering */
   severity: AuditSeverity;
+  /** Operation duration in milliseconds */
   duration_ms: number;
+  /** Error code if the operation failed */
   error?: ErrorCode;
 }
 
+/**
+ * Structured JSON audit logger with tamper protection and automatic rotation.
+ *
+ * The `.secureio/` directory containing audit logs is on the immutable denylist,
+ * preventing agents from reading, modifying, or deleting their own audit trail.
+ *
+ * Write operation parameters are sanitized: `content` fields are replaced with
+ * SHA-256 hash prefixes to avoid storing sensitive data in logs.
+ */
 export class AuditLogger {
   private options: AuditLogOptions;
 
@@ -32,6 +54,13 @@ export class AuditLogger {
     };
   }
 
+  /**
+   * Records an audit log entry for a tool invocation.
+   * Sanitizes parameters (hashing content fields) and routes the entry
+   * to the configured output (file, stderr, or none).
+   *
+   * @param input - Tool invocation data to log
+   */
   async log(input: AuditLogInput): Promise<void> {
     const sanitizedParams = this.sanitizeParams(input.params);
 
@@ -55,6 +84,7 @@ export class AuditLogger {
     }
   }
 
+  /** Appends an audit entry to the log file, creating directories as needed. */
   private async writeToFile(line: string): Promise<void> {
     const logPath = this.options.path;
     const dir = path.dirname(logPath);
@@ -64,6 +94,7 @@ export class AuditLogger {
     await fs.appendFile(logPath, line, 'utf-8');
   }
 
+  /** Rotates the log file if it exceeds the configured maximum size. */
   private async rotateIfNeeded(logPath: string): Promise<void> {
     try {
       const stat = await fs.stat(logPath);
@@ -78,6 +109,10 @@ export class AuditLogger {
     }
   }
 
+  /**
+   * Sanitizes tool parameters for logging by replacing `content` fields
+   * with a SHA-256 hash prefix to avoid storing sensitive data.
+   */
   private sanitizeParams(params: Record<string, unknown>): Record<string, unknown> {
     const sanitized: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(params)) {

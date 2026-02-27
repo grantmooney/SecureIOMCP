@@ -6,17 +6,34 @@ import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
 
+/** Parameters for the `secure_diff` MCP tool. */
 export interface SecureDiffParams {
+  /** Git ref to diff against (default: working changes) */
   ref?: string;
+  /** Scope diff to this path */
   path?: string;
 }
 
+/** Result of a redacted git diff operation. */
 export interface DiffResult {
+  /** Redacted diff output with secrets replaced */
   diff: string;
+  /** Number of files changed in the diff */
   files_changed: number;
+  /** Number of hunks blocked due to denylist files */
   redacted_hunks: number;
 }
 
+/**
+ * Handles the `secure_diff` MCP tool: returns redacted git diff output.
+ * Executes `git diff` with optional ref and path filters. Both `+` and `-` lines
+ * pass through the redaction engine. Diffs referencing denylist files are blocked
+ * entirely with `[DIFF BLOCKED: protected file]`.
+ *
+ * @param mw - Security middleware instance
+ * @param params - Tool parameters
+ * @returns Redacted diff with metadata, or a safe error response
+ */
 export async function handleSecureDiff(
   mw: SecurityMiddleware,
   params: SecureDiffParams,
@@ -85,6 +102,10 @@ export async function handleSecureDiff(
   };
 }
 
+/**
+ * Parses and redacts a raw git diff output.
+ * Blocks entire hunks for denylist files, redacts individual +/- lines for allowed files.
+ */
 function redactDiff(
   rawDiff: string,
   mw: SecurityMiddleware,
@@ -141,6 +162,7 @@ function redactDiff(
   };
 }
 
+/** Extracts the file path from a `diff --git a/path b/path` header line. */
 function extractFilePath(diffHeader: string): string {
   // diff --git a/path/to/file b/path/to/file
   const match = diffHeader.match(/diff --git a\/(.+?) b\//);

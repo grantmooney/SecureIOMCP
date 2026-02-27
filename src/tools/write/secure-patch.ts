@@ -5,13 +5,28 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
 
+/** Parameters for the `secure_patch` MCP tool. */
 export interface SecurePatchParams {
+  /** File path relative to the project root */
   path: string;
+  /** Content to find and replace */
   old_content: string;
+  /** Replacement content */
   new_content: string;
+  /** SHA-256 hash for optimistic locking (rejects if file changed since last read) */
   expected_hash?: string;
 }
 
+/**
+ * Handles the `secure_patch` MCP tool: partial file edit with optimistic locking.
+ * Pipeline: check size limit -> check write access -> scan new content for secrets ->
+ * read current file -> verify hash (if provided) -> find and replace -> atomic write.
+ * Returns the changed line range and new file hash after a successful edit.
+ *
+ * @param mw - Security middleware instance
+ * @param params - Tool parameters including old and new content
+ * @returns Patch result with changed range and new hash, or a safe error response
+ */
 export async function handleSecurePatch(
   mw: SecurityMiddleware,
   params: SecurePatchParams,
@@ -154,6 +169,11 @@ export async function handleSecurePatch(
   };
 }
 
+/**
+ * Renames a file with retry logic for Windows EPERM errors.
+ * On Windows, `rename` can fail with EPERM if the target file is locked by another process.
+ * Retries up to 3 times with 100ms backoff between attempts.
+ */
 async function renameWithRetry(src: string, dest: string, retries = 3): Promise<void> {
   for (let attempt = 0; attempt < retries; attempt++) {
     try {

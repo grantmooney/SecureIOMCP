@@ -2,12 +2,25 @@ import { SecurityMiddleware } from '../../security/middleware.js';
 import { ReadResult, SecureResponse } from '../../types/response.js';
 import { SecureIOError } from '../../types/errors.js';
 
+/** Parameters for the `secure_read` MCP tool. */
 export interface SecureReadParams {
+  /** File path relative to the project root */
   path: string;
+  /** Starting line number (1-indexed, default: 1) */
   start_line?: number;
+  /** Ending line number (capped by `maxFileReadLines`) */
   end_line?: number;
 }
 
+/**
+ * Handles the `secure_read` MCP tool: reads a file with automatic secret redaction.
+ * Pipeline: check access -> read with encoding detection -> redact -> apply line range.
+ * Hard-capped at `maxFileReadLines` lines per request.
+ *
+ * @param mw - Security middleware instance
+ * @param params - Tool parameters
+ * @returns Redacted file content with metadata, or a safe error response
+ */
 export async function handleSecureRead(
   mw: SecurityMiddleware,
   params: SecureReadParams,
