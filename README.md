@@ -63,6 +63,34 @@ npx secureio-mcp
 }
 ```
 
+### Restrict Native File Access
+
+For best results, configure your AI agent to prefer SecureIOMCP tools over native file access tools. This ensures all file operations go through the security layer.
+
+**Claude Code** — add to your project `CLAUDE.md`:
+
+```markdown
+## File Access Rules
+
+- ALWAYS use secure_read instead of the Read tool or cat/head/tail
+- ALWAYS use secure_search instead of the Grep tool or grep/rg
+- ALWAYS use secure_glob instead of the Glob tool or find/ls
+- ALWAYS use secure_write instead of the Write tool
+- ALWAYS use secure_patch instead of the Edit tool or sed/awk
+- ALWAYS use secure_diff instead of git diff
+- ALWAYS use secure_tree instead of tree or ls -R
+```
+
+**Cursor** — add to `.cursor/rules`:
+
+```
+Always prefer SecureIOMCP tools (secure_read, secure_search, secure_glob, secure_write,
+secure_patch, secure_diff, secure_tree) over native file access tools (Read, Grep, Glob,
+Write, Edit, cat, grep, find, sed). These tools enforce secret redaction and access control.
+```
+
+**Copilot** — native tool restriction is not currently configurable. Copilot will select SecureIOMCP tools based on tool descriptions when they are a better fit.
+
 ### Verify Installation
 
 ```bash
@@ -269,7 +297,11 @@ Security scan report showing blocked files and detected secrets.
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `path` | string | No | Scope audit to subdirectory |
-| `verbose` | boolean | No | Include per-file details |
+| `verbose` | boolean | No | Include per-file details (paginated) |
+| `offset` | number | No | Number of detail entries to skip (verbose mode only) |
+| `max_results` | number | No | Maximum detail entries to return (verbose mode only) |
+
+Summary counts (`files_blocked`, `secrets_detected`, `files_with_secrets`) always reflect the full scan regardless of pagination. Only the `details` array is paginated.
 
 ```json
 {
