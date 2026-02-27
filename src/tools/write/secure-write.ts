@@ -104,12 +104,7 @@ export async function handleSecureWrite(
         returned: 1,
         offset: 0,
         has_more: false,
-        truncated_lines: 0,
         redactions: 0,
-        bytes: contentBytes,
-        raw_bytes: contentBytes,
-        tokens_saved: 0,
-        session_tokens_saved: mw.sessionTokensSaved,
       },
     };
   } catch (err: unknown) {

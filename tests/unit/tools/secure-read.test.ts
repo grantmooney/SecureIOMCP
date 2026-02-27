@@ -70,7 +70,7 @@ describe('secure_read', () => {
     if ('meta' in result) {
       expect(result.meta.total).toBeGreaterThan(0);
       expect(result.meta.returned).toBeGreaterThan(0);
-      expect(typeof result.meta.bytes).toBe('number');
+      expect(typeof result.meta.redactions).toBe('number');
     }
   });
 });

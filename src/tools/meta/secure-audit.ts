@@ -1,7 +1,6 @@
 import { SecurityMiddleware } from '../../security/middleware.js';
-import { AuditResult, AuditFileDetail, SecureResponse, ResponseMeta } from '../../types/response.js';
+import { AuditResult, AuditFileDetail, SecureResponse } from '../../types/response.js';
 import { SecureIOError } from '../../types/errors.js';
-import { estimateTokensSaved } from '../../response.js';
 import { transcodeToUtf8, isBinary } from '../../security/encoding-detector.js';
 import fsp from 'node:fs/promises';
 import fs from 'node:fs';
@@ -13,6 +12,10 @@ export interface SecureAuditParams {
   path?: string;
   /** Include per-file details with line numbers and categories (default: false) */
   verbose?: boolean;
+  /** Include blocked files in verbose details (default: false). Summary count always included. */
+  show_blocked?: boolean;
+  /** Compact output format (default: true). Set false for structured detail objects. */
+  compact?: boolean;
   /** Number of detail entries to skip (for pagination, verbose mode only) */
   offset?: number;
   /** Maximum number of detail entries to return (for pagination, verbose mode only) */
@@ -40,6 +43,8 @@ export async function handleSecureAudit(
   const startTime = Date.now();
   const auditPath = params.path ?? '.';
   const verbose = params.verbose ?? false;
+  const showBlocked = params.show_blocked ?? false;
+  const compact = params.compact ?? true;
   const skipDirs = new Set(['node_modules', '.git', 'dist', 'build', 'vendor']);
 
   // Pagination parameters (only apply to verbose details); clamp to sane values
@@ -57,8 +62,7 @@ export async function handleSecureAudit(
   let totalDetails = 0;
   let detailsSkipped = 0;
   let detailBytes = 0;
-  let rawDetailBytes = 0;
-  let constrainedBy: ResponseMeta['constrained_by'] | undefined;
+  let constrainedBy: 'maxResultCount' | 'maxResponseBytes' | undefined;
 
   /**
    * Attempts to add a detail entry to the response, respecting offset, maxResults,
@@ -66,7 +70,6 @@ export async function handleSecureAudit(
    */
   function tryAddDetail(detail: AuditFileDetail): void {
     const entryBytes = Buffer.byteLength(JSON.stringify(detail), 'utf-8');
-    rawDetailBytes += entryBytes;
     totalDetails++;
 
     // Skip entries before offset
@@ -119,7 +122,7 @@ export async function handleSecureAudit(
         // Check if blocked by denylist
         if (!mw.accessControl.isAllowed(relativePath)) {
           filesBlocked++;
-          if (verbose) {
+          if (verbose && showBlocked) {
             tryAddDetail({ path: relativePath, blocked: true, redactions: [] });
           }
           continue;
@@ -161,6 +164,22 @@ export async function handleSecureAudit(
 
   await walk(absRoot);
 
+  // Format details: compact mode converts AuditFileDetail[] to string[]
+  let formattedDetails: AuditFileDetail[] | string[] | undefined;
+  if (verbose) {
+    if (compact) {
+      formattedDetails = details.map(d => {
+        if (d.blocked) return `${d.path}:blocked`;
+        const findings = d.redactions
+          .map(r => `${r.line}:${r.category}`)
+          .join(',');
+        return `${d.path}:${findings}`;
+      });
+    } else {
+      formattedDetails = details;
+    }
+  }
+
   const result: AuditResult = {
     preset: mw.config.preset,
     files_blocked: filesBlocked,
@@ -168,7 +187,7 @@ export async function handleSecureAudit(
     files_with_secrets: filesWithSecrets,
     denylist_rules: 0, // Will count from access control
     custom_patterns: mw.config.redactionPatterns.length,
-    ...(verbose ? { details } : {}),
+    ...(formattedDetails ? { details: formattedDetails } : {}),
   };
 
   await mw.auditLogger.log({
@@ -179,14 +198,6 @@ export async function handleSecureAudit(
     severity: 'normal',
     duration_ms: Date.now() - startTime,
   });
-
-  const auditBytes = Buffer.byteLength(JSON.stringify(result), 'utf-8');
-
-  // Token savings: rawDetailBytes tracks what ALL detail entries would cost;
-  // detailBytes tracks what we actually returned
-  const sessionTokensSaved = verbose
-    ? mw.recordSavings(rawDetailBytes, detailBytes)
-    : mw.sessionTokensSaved;
 
   // In non-verbose mode, meta reflects the single audit result object (not details)
   const metaTotal = verbose ? totalDetails : 1;
@@ -203,17 +214,7 @@ export async function handleSecureAudit(
       returned: metaReturned,
       offset: metaOffset,
       has_more: metaHasMore,
-      truncated_lines: 0,
       redactions: secretsDetected,
-      bytes: auditBytes,
-      // raw_bytes = actual response + any detail bytes that were truncated away
-      raw_bytes: verbose ? auditBytes + (rawDetailBytes - detailBytes) : auditBytes,
-      tokens_saved: estimateTokensSaved(
-        verbose ? auditBytes + (rawDetailBytes - detailBytes) : auditBytes,
-        auditBytes,
-      ),
-      session_tokens_saved: sessionTokensSaved,
-      ...(constrainedBy ? { constrained_by: constrainedBy } : {}),
     },
   };
 }

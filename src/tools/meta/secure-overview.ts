@@ -160,8 +160,6 @@ export async function handleSecureOverview(
     duration_ms: Date.now() - startTime,
   });
 
-  const overviewBytes = Buffer.byteLength(JSON.stringify(result), 'utf-8');
-
   return {
     results: result,
     meta: {
@@ -169,12 +167,7 @@ export async function handleSecureOverview(
       returned: 1,
       offset: 0,
       has_more: false,
-      truncated_lines: 0,
       redactions: 0,
-      bytes: overviewBytes,
-      raw_bytes: overviewBytes,
-      tokens_saved: 0,
-      session_tokens_saved: mw.sessionTokensSaved,
     },
   };
 }

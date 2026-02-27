@@ -15,12 +15,25 @@ export interface SecureSearchParams {
   path?: string;
   /** File glob filter (e.g., `*.ts`) */
   file_pattern?: string;
-  /** Number of context lines before and after each match (default: 2) */
+  /** Number of context lines before and after each match (default: 0) */
   context_lines?: number;
   /** Maximum results to return */
   max_results?: number;
   /** Offset for pagination */
   offset?: number;
+  /** Compact output format (default: true). Set false for structured objects. */
+  compact?: boolean;
+}
+
+/** A raw match yielded by the file-walking helper. */
+interface RawMatch {
+  file: string;
+  lineNum: number;
+  redactedText: string;
+  redacted: boolean;
+  redactionCount: number;
+  contextBefore?: string[];
+  contextAfter?: string[];
 }
 
 /**
@@ -35,7 +48,7 @@ export interface SecureSearchParams {
 export async function handleSecureSearch(
   mw: SecurityMiddleware,
   params: SecureSearchParams,
-): Promise<SecureResponse<SearchResult[]> | { error: SecureIOError }> {
+): Promise<SecureResponse<(SearchResult | string)[]> | { error: SecureIOError }> {
   const startTime = Date.now();
 
   // Validate regex
@@ -53,17 +66,9 @@ export async function handleSecureSearch(
   }
 
   const searchRoot = params.path ?? '.';
-  const contextLines = params.context_lines ?? 2;
-  const maxResults = params.max_results ?? mw.config.limits.maxResultCount;
+  const contextLines = params.context_lines ?? 0;
   const offset = params.offset ?? 0;
-
-  const builder = new ResponseBuilder<SearchResult>(
-    mw.config.limits,
-    offset,
-    (raw, efficient) => mw.recordSavings(raw, efficient),
-  );
-  let totalMatches = 0;
-  let skipped = 0;
+  const compact = params.compact ?? true;
 
   // Collect files to search
   const files = await collectFiles(
@@ -73,6 +78,8 @@ export async function handleSecureSearch(
     params.file_pattern,
   );
 
+  // Collect all raw matches
+  const rawMatches: RawMatch[] = [];
   for (const filePath of files) {
     const absolutePath = path.resolve(mw.config.projectRoot, filePath);
 
@@ -106,66 +113,81 @@ export async function handleSecureSearch(
 
       for (let i = 0; i < fileLines.length; i++) {
         const line = fileLines[i];
-        // Reset regex for each line
         regex.lastIndex = 0;
         if (!regex.test(line)) continue;
 
-        totalMatches++;
-
-        // Track raw bytes for ALL matches (what grep -rn would output)
-        const ctxStart = Math.max(0, i - contextLines);
-        const ctxEnd = Math.min(fileLines.length - 1, i + contextLines);
-        let rawMatchBytes = Buffer.byteLength(filePath, 'utf-8') + 10; // path + line number + separators
-        for (let k = ctxStart; k <= ctxEnd; k++) {
-          rawMatchBytes += Buffer.byteLength(fileLines[k], 'utf-8') + 1;
-        }
-        builder.addRawBytes(rawMatchBytes);
-
-        if (skipped < offset) {
-          skipped++;
-          continue;
-        }
-
-        // Redact the matching line
         const redacted = mw.redactLine(line);
-        const isRedacted = redacted.matches.length > 0;
-
-        // Build context
-        const contextBefore: string[] = [];
-        const contextAfter: string[] = [];
-
-        for (let j = Math.max(0, i - contextLines); j < i; j++) {
-          const ctxRedacted = mw.redactLine(fileLines[j]);
-          contextBefore.push(ctxRedacted.text);
-        }
-
-        for (let j = i + 1; j <= Math.min(fileLines.length - 1, i + contextLines); j++) {
-          const ctxRedacted = mw.redactLine(fileLines[j]);
-          contextAfter.push(ctxRedacted.text);
-        }
-
-        if (redacted.matches.length > 0) {
-          builder.addRedactions(redacted.matches.length);
-        }
-
-        const added = builder.add({
+        const match: RawMatch = {
           file: filePath,
-          line: i + 1,
-          content: redacted.text,
-          context_before: contextBefore,
-          context_after: contextAfter,
-          redacted: isRedacted,
-        });
+          lineNum: i + 1,
+          redactedText: redacted.text,
+          redacted: redacted.matches.length > 0,
+          redactionCount: redacted.matches.length,
+        };
 
-        if (!added) break;
+        // Eagerly resolve context so fileLines can be GC'd after this file
+        if (contextLines > 0) {
+          const contextBefore: string[] = [];
+          const contextAfter: string[] = [];
+          for (let j = Math.max(0, i - contextLines); j < i; j++) {
+            contextBefore.push(mw.redactLine(fileLines[j]).text);
+          }
+          for (let j = i + 1; j <= Math.min(fileLines.length - 1, i + contextLines); j++) {
+            contextAfter.push(mw.redactLine(fileLines[j]).text);
+          }
+          match.contextBefore = contextBefore;
+          match.contextAfter = contextAfter;
+        }
+
+        rawMatches.push(match);
       }
     } catch {
-      // Skip files we can't read
       continue;
     }
   }
 
-  builder.setTotal(totalMatches);
+  const totalMatches = rawMatches.length;
+
+  let response: SecureResponse<(SearchResult | string)[]>;
+
+  if (compact) {
+    const builder = new ResponseBuilder<string>(mw.config.limits, offset);
+    let skipped = 0;
+
+    for (const match of rawMatches) {
+      if (skipped < offset) { skipped++; continue; }
+      if (match.redactionCount > 0) builder.addRedactions(match.redactionCount);
+      if (!builder.add(`${match.file}:${match.lineNum}:${match.redactedText}`)) break;
+    }
+
+    builder.setTotal(totalMatches);
+    response = builder.build();
+  } else {
+    const builder = new ResponseBuilder<SearchResult>(mw.config.limits, offset);
+    let skipped = 0;
+
+    for (const match of rawMatches) {
+      if (skipped < offset) { skipped++; continue; }
+      if (match.redactionCount > 0) builder.addRedactions(match.redactionCount);
+
+      const result: SearchResult = {
+        file: match.file,
+        line: match.lineNum,
+        content: match.redactedText,
+        redacted: match.redacted,
+      };
+
+      if (contextLines > 0 && match.contextBefore && match.contextAfter) {
+        result.context_before = match.contextBefore;
+        result.context_after = match.contextAfter;
+      }
+
+      if (!builder.add(result)) break;
+    }
+
+    builder.setTotal(totalMatches);
+    response = builder.build();
+  }
 
   await mw.auditLogger.log({
     tool: 'secure_search',
@@ -176,7 +198,7 @@ export async function handleSecureSearch(
     duration_ms: Date.now() - startTime,
   });
 
-  return builder.build();
+  return response;
 }
 
 /**

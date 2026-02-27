@@ -36,7 +36,7 @@ function toMcpResult(result: unknown): { content: { type: 'text'; text: string }
 export function createServer(mw: SecurityMiddleware): McpServer {
   const server = new McpServer({
     name: 'secureio-mcp',
-    version: '0.2.1',
+    version: '0.2.2',
   });
 
   // ── Read tools ──────────────────────────────────────────────────────
@@ -66,7 +66,8 @@ export function createServer(mw: SecurityMiddleware): McpServer {
     description:
       'Search across files with regex pattern matching and automatic secret redaction. ' +
       'ALWAYS use this instead of native search tools (grep, rg, ripgrep, Grep tool, git grep). ' +
-      'Matches are returned with context lines and secrets automatically redacted. ' +
+      'Returns compact grep-like results by default (no context lines). ' +
+      'Set compact=false for structured objects, context_lines>0 for surrounding lines. ' +
       'Respects denylist — blocked files are excluded from results. ' +
       'Supports pagination via offset/max_results for large result sets.',
     annotations: {
@@ -78,9 +79,10 @@ export function createServer(mw: SecurityMiddleware): McpServer {
       pattern: z.string().describe('Regex pattern to search for'),
       path: z.string().optional().describe('Scope search to this subdirectory'),
       file_pattern: z.string().optional().describe('File glob filter (e.g. *.ts)'),
-      context_lines: z.number().optional().describe('Number of context lines (default 2)'),
+      context_lines: z.number().optional().describe('Number of context lines before and after each match (default: 0)'),
       max_results: z.number().optional().describe('Maximum results to return'),
       offset: z.number().optional().describe('Offset for pagination'),
+      compact: z.boolean().optional().describe('Compact output format (default: true). Set false for structured objects.'),
     },
   }, async (args) => toMcpResult(await handleSecureSearch(mw, args)));
 
@@ -101,6 +103,7 @@ export function createServer(mw: SecurityMiddleware): McpServer {
       path: z.string().optional().describe('Scope search to this subdirectory'),
       max_results: z.number().optional().describe('Maximum results to return'),
       offset: z.number().optional().describe('Offset for pagination'),
+      compact: z.boolean().optional().describe('Compact output format (default: true). Set false for structured objects.'),
     },
   }, async (args) => toMcpResult(await handleSecureGlob(mw, args)));
 
@@ -195,6 +198,8 @@ export function createServer(mw: SecurityMiddleware): McpServer {
     inputSchema: {
       path: z.string().optional().describe('Scope audit to this subdirectory'),
       verbose: z.boolean().optional().describe('Include per-file details (paginated)'),
+      show_blocked: z.boolean().optional().describe('Include blocked files in verbose details (default: false). Summary count always included.'),
+      compact: z.boolean().optional().describe('Compact output format (default: true). Set false for structured objects.'),
       offset: z.number().int().min(0).optional().describe('Number of detail entries to skip (verbose mode only)'),
       max_results: z.number().int().min(1).optional().describe('Maximum detail entries to return (verbose mode only)'),
     },
