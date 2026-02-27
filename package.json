@@ -4,6 +4,17 @@
   "description": "Secure, token-efficient MCP server for AI agent codebase access",
   "type": "module",
   "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/grantmooney/SecureIOMCP.git"
+  },
   "bin": {
     "secureio-mcp": "dist/index.js"
   },
@@ -16,7 +27,8 @@
     "test:integration": "vitest run tests/integration",
     "test:security": "vitest run tests/security",
     "test:platform": "vitest run tests/platform",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "prepublishOnly": "npm run build && npm test"
   },
   "keywords": [
     "mcp",
