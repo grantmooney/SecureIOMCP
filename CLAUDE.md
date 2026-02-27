@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-SecureIOMCP — a TypeScript MCP server providing secure, token-efficient, read-write codebase access for AI agents (Claude Code, Cursor, Copilot). Target audience is GovTech development teams. See `docs/plans/2026-02-26-secureio-mcp-design.md` for the full design document.
+SecureIOMCP — a TypeScript MCP server providing secure, token-efficient, read-write codebase access for AI agents (Claude Code, Cursor, Copilot). Target audience is development teams working in security-conscious environments. See `docs/plans/2026-02-26-secureio-mcp-design.md` for the full design document.
 
 > **Note:** Repository is named `SecureSearchMCP` but project has been renamed to `SecureIOMCP`.
 

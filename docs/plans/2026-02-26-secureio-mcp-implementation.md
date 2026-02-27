@@ -48,7 +48,7 @@ Then replace `package.json` contents:
     "test:platform": "vitest run tests/platform",
     "test:coverage": "vitest run --coverage"
   },
-  "keywords": ["mcp", "security", "govtech", "ai-agent"],
+  "keywords": ["mcp", "security", "ai-agent"],
   "author": "Grant Mooney",
   "license": "MIT"
 }

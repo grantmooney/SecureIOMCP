@@ -46,6 +46,10 @@ export class SecurityMiddleware {
   readonly auditLogger: AuditLogger;
   readonly config: ResolvedConfig;
 
+  /** Session-level token savings accumulators. */
+  private _sessionRawBytes = 0;
+  private _sessionEfficientBytes = 0;
+
   constructor(config: ResolvedConfig) {
     this.config = config;
     this.pathResolver = new PathResolver(config.projectRoot);
@@ -66,6 +70,21 @@ export class SecurityMiddleware {
       path: path.resolve(config.projectRoot, config.audit.path),
       maxSizeMB: config.limits.maxAuditLogSizeMB,
     });
+  }
+
+  /**
+   * Records token savings for a single tool call and returns the updated session total.
+   * Used as a session tracker callback by ResponseBuilder and manual meta construction.
+   */
+  recordSavings(rawBytes: number, efficientBytes: number): number {
+    this._sessionRawBytes += rawBytes;
+    this._sessionEfficientBytes += efficientBytes;
+    return Math.max(0, Math.floor((this._sessionRawBytes - this._sessionEfficientBytes) / 4));
+  }
+
+  /** Current cumulative tokens saved across all tool calls in this session. */
+  get sessionTokensSaved(): number {
+    return Math.max(0, Math.floor((this._sessionRawBytes - this._sessionEfficientBytes) / 4));
   }
 
   /**

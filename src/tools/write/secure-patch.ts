@@ -150,6 +150,8 @@ export async function handleSecurePatch(
     duration_ms: Date.now() - startTime,
   });
 
+  const patchBytes = Buffer.byteLength(newContent, 'utf-8');
+
   return {
     results: {
       path: params.path,
@@ -164,7 +166,10 @@ export async function handleSecurePatch(
       has_more: false,
       truncated_lines: 0,
       redactions: 0,
-      bytes: Buffer.byteLength(newContent, 'utf-8'),
+      bytes: patchBytes,
+      raw_bytes: patchBytes,
+      tokens_saved: 0,
+      session_tokens_saved: mw.sessionTokensSaved,
     },
   };
 }

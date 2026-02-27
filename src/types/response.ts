@@ -17,6 +17,12 @@ export interface ResponseMeta {
   redactions: number;
   /** Total response payload size in bytes */
   bytes: number;
+  /** Estimated bytes the raw CLI equivalent (grep/cat/find) would have produced */
+  raw_bytes: number;
+  /** Estimated tokens saved vs raw equivalent (~4 bytes/token) */
+  tokens_saved: number;
+  /** Cumulative tokens saved across all tool calls in this session */
+  session_tokens_saved: number;
   /** Which limit caused the response to stop, if any */
   constrained_by?: 'maxResultCount' | 'maxResponseBytes' | 'maxLineLength';
 }

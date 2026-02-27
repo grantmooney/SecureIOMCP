@@ -120,6 +120,8 @@ export async function handleSecureAudit(
     duration_ms: Date.now() - startTime,
   });
 
+  const auditBytes = Buffer.byteLength(JSON.stringify(result), 'utf-8');
+
   return {
     results: result,
     meta: {
@@ -129,7 +131,10 @@ export async function handleSecureAudit(
       has_more: false,
       truncated_lines: 0,
       redactions: secretsDetected,
-      bytes: Buffer.byteLength(JSON.stringify(result), 'utf-8'),
+      bytes: auditBytes,
+      raw_bytes: auditBytes,
+      tokens_saved: 0,
+      session_tokens_saved: mw.sessionTokensSaved,
     },
   };
 }

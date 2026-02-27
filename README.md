@@ -5,7 +5,7 @@
 [![Node.js](https://img.shields.io/node/v/secureio-mcp.svg)](https://nodejs.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Secure, token-efficient MCP server that provides AI agents with read-write codebase access while automatically redacting secrets, enforcing access controls, and maintaining audit trails. Built for GovTech development teams using AI coding agents (Claude Code, Cursor, Copilot).
+Secure, token-efficient MCP server that provides AI agents with read-write codebase access while automatically redacting secrets, enforcing access controls, and maintaining audit trails. Built for development teams using AI coding agents (Claude Code, Cursor, Copilot).
 
 ---
 
@@ -17,7 +17,7 @@ Secure, token-efficient MCP server that provides AI agents with read-write codeb
 - **Write-side secret scanning** -- Content is scanned by the redaction engine before being written. Writes containing detected secrets are rejected.
 - **Token-efficient responses** -- Pagination, result count limits, line truncation, and response byte caps minimize token usage. A standard response envelope with metadata enables strategic pagination.
 - **Tamper-proof audit logging** -- Every tool invocation is logged as structured JSON. The `.secureio/` directory is on the immutable denylist, preventing agents from accessing their own audit trail.
-- **Zero external binary dependencies** -- Pure JavaScript implementation with no dependency on ripgrep or other native binaries. Suitable for restricted GovTech environments.
+- **Zero external binary dependencies** -- Pure JavaScript implementation with no dependency on ripgrep or other native binaries. Suitable for restricted environments.
 - **Cross-platform** -- Tested on Linux and Windows (Node.js 20+ and 22+).
 - **Organization-level system policy** -- `~/.secureio/policy.json` allows security teams to enforce organization-wide rules that individual projects cannot weaken.
 

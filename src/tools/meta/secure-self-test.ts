@@ -92,6 +92,8 @@ export async function handleSecureSelfTest(
     duration_ms: Date.now() - startTime,
   });
 
+  const testBytes = Buffer.byteLength(JSON.stringify(result), 'utf-8');
+
   return {
     results: result,
     meta: {
@@ -101,7 +103,10 @@ export async function handleSecureSelfTest(
       has_more: false,
       truncated_lines: 0,
       redactions: 0,
-      bytes: Buffer.byteLength(JSON.stringify(result), 'utf-8'),
+      bytes: testBytes,
+      raw_bytes: testBytes,
+      tokens_saved: 0,
+      session_tokens_saved: mw.sessionTokensSaved,
     },
   };
 }
