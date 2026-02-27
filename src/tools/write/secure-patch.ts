@@ -1,3 +1,23 @@
+/**
+ * @module secure-patch
+ *
+ * MCP tool handler for `secure_patch`. Performs a partial (search-and-replace)
+ * edit of an existing file with optimistic locking via SHA-256 hash comparison
+ * and mandatory secret scanning of the replacement content.
+ *
+ * Security pipeline per request:
+ * 1. Content size check on `new_content` against `maxWriteBytes`
+ * 2. Write-access check (denylist + bounds + read-only enforcement)
+ * 3. Secret scanning of `new_content` — patch is rejected if secrets are detected
+ * 4. Read current file content and compute its SHA-256 hash
+ * 5. Optimistic lock verification: if `expected_hash` is provided and does not
+ *    match the current hash, the patch is rejected (prevents lost updates)
+ * 6. Locate `old_content` in the file and replace with `new_content`
+ * 7. Atomic write via temp file + rename
+ * 8. Return the new file hash and changed line range
+ * 9. Audit-log the operation
+ */
+
 import { SecurityMiddleware } from '../../security/middleware.js';
 import { PatchResult, SecureResponse } from '../../types/response.js';
 import { SecureIOError } from '../../types/errors.js';
@@ -5,6 +25,16 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
 
+/**
+ * Parameters accepted by the `secure_patch` MCP tool.
+ *
+ * @property path          - File path relative to the project root.
+ * @property old_content   - The exact substring to find in the current file content.
+ * @property new_content   - The replacement string to substitute for `old_content`.
+ * @property expected_hash - Optional SHA-256 hash of the file as last read by the agent.
+ *                           When provided, the patch is rejected if the file has been
+ *                           modified since that read (optimistic concurrency control).
+ */
 export interface SecurePatchParams {
   path: string;
   old_content: string;
@@ -12,6 +42,20 @@ export interface SecurePatchParams {
   expected_hash?: string;
 }
 
+/**
+ * Handle a `secure_patch` tool invocation.
+ *
+ * Validates content size, checks write access, scans the replacement content
+ * for secrets, reads the current file, verifies the optimistic lock hash
+ * (if provided), performs the find-and-replace, and atomically writes the
+ * result. Returns the new SHA-256 hash and the line range affected by the
+ * patch. All operations are recorded in the audit log.
+ *
+ * @param mw     - The initialised {@link SecurityMiddleware} instance.
+ * @param params - Validated tool parameters.
+ * @returns A {@link SecureResponse} containing a {@link PatchResult},
+ *          or an object with a {@link SecureIOError} on failure.
+ */
 export async function handleSecurePatch(
   mw: SecurityMiddleware,
   params: SecurePatchParams,
@@ -154,6 +198,18 @@ export async function handleSecurePatch(
   };
 }
 
+/**
+ * Rename a file from `src` to `dest` with automatic retry on transient errors.
+ *
+ * On Windows, `fs.rename` can fail with `EPERM` when the target file is
+ * momentarily locked by another process (e.g. antivirus scanner). This
+ * helper retries up to `retries` times with an exponential back-off
+ * (100ms, 200ms, 300ms, ...) before giving up.
+ *
+ * @param src     - Absolute path of the source (temp) file.
+ * @param dest    - Absolute path of the destination file.
+ * @param retries - Maximum number of attempts (default 3).
+ */
 async function renameWithRetry(src: string, dest: string, retries = 3): Promise<void> {
   for (let attempt = 0; attempt < retries; attempt++) {
     try {

@@ -1,14 +1,46 @@
+/**
+ * @module secure-tree
+ *
+ * MCP tool handler for `secure_tree`. Produces a hierarchical directory-structure
+ * overview of the project (or a subdirectory), suitable for giving AI agents a
+ * quick sense of project layout without reading individual files.
+ *
+ * The tree is built recursively up to a configurable `max_depth`. At the depth
+ * limit, directories are summarised by their file count rather than being fully
+ * expanded. Well-known non-source directories (`node_modules`, `.git`, etc.)
+ * are automatically skipped, and files on the denylist are excluded from the
+ * output.
+ */
+
 import { SecurityMiddleware } from '../../security/middleware.js';
 import { TreeEntry, SecureResponse } from '../../types/response.js';
 import { SecureIOError } from '../../types/errors.js';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 
+/**
+ * Parameters accepted by the `secure_tree` MCP tool.
+ *
+ * @property path      - Optional subdirectory to root the tree at (relative to project root).
+ * @property max_depth - Maximum recursion depth (defaults to the configured tree-depth limit).
+ */
 export interface SecureTreeParams {
   path?: string;
   max_depth?: number;
 }
 
+/**
+ * Handle a `secure_tree` tool invocation.
+ *
+ * Recursively builds a {@link TreeEntry} hierarchy starting from the given
+ * (or default) root path. Directories beyond `max_depth` are collapsed to
+ * a file-count summary. The result is logged to the audit trail.
+ *
+ * @param mw     - The initialised {@link SecurityMiddleware} instance.
+ * @param params - Validated tool parameters.
+ * @returns A {@link SecureResponse} containing the root {@link TreeEntry},
+ *          or an object with a {@link SecureIOError} on failure.
+ */
 export async function handleSecureTree(
   mw: SecurityMiddleware,
   params: SecureTreeParams,

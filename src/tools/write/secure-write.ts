@@ -1,3 +1,22 @@
+/**
+ * @module secure-write
+ *
+ * MCP tool handler for `secure_write`. Writes a complete file to the project
+ * with mandatory secret scanning and atomic write semantics.
+ *
+ * Security pipeline per request:
+ * 1. Content size check against the configured `maxWriteBytes` limit
+ * 2. Write-access check (denylist + bounds + read-only enforcement)
+ * 3. Secret scanning of the entire content — write is rejected if secrets
+ *    are detected (prevents agents from accidentally persisting credentials)
+ * 4. Atomic write via temp file + rename (data is never partially written)
+ * 5. SHA-256 hash of the written content returned for optimistic locking
+ * 6. Audit-log entry for the operation
+ *
+ * On Windows, the rename step includes an automatic retry loop to handle
+ * transient `EPERM` errors caused by file locking.
+ */
+
 import { SecurityMiddleware } from '../../security/middleware.js';
 import { WriteResult, SecureResponse } from '../../types/response.js';
 import { SecureIOError } from '../../types/errors.js';
@@ -5,11 +24,31 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
 
+/**
+ * Parameters accepted by the `secure_write` MCP tool.
+ *
+ * @property path    - File path relative to the project root.
+ * @property content - The full file content to write (UTF-8).
+ */
 export interface SecureWriteParams {
   path: string;
   content: string;
 }
 
+/**
+ * Handle a `secure_write` tool invocation.
+ *
+ * Validates content size, checks write access through the security middleware,
+ * scans the content for embedded secrets, then performs an atomic write
+ * (temp file + rename). Returns the file path and a SHA-256 hash of the
+ * written content for use with {@link handleSecurePatch}'s optimistic locking.
+ * All access -- whether granted or denied -- is recorded in the audit log.
+ *
+ * @param mw     - The initialised {@link SecurityMiddleware} instance.
+ * @param params - Validated tool parameters (path and content).
+ * @returns A {@link SecureResponse} containing a {@link WriteResult},
+ *          or an object with a {@link SecureIOError} on failure.
+ */
 export async function handleSecureWrite(
   mw: SecurityMiddleware,
   params: SecureWriteParams,
@@ -103,6 +142,18 @@ export async function handleSecureWrite(
   }
 }
 
+/**
+ * Rename a file from `src` to `dest` with automatic retry on transient errors.
+ *
+ * On Windows, `fs.rename` can fail with `EPERM` when the target file is
+ * momentarily locked by another process (e.g. antivirus scanner). This
+ * helper retries up to `retries` times with an exponential back-off
+ * (100ms, 200ms, 300ms, ...) before giving up.
+ *
+ * @param src     - Absolute path of the source (temp) file.
+ * @param dest    - Absolute path of the destination file.
+ * @param retries - Maximum number of attempts (default 3).
+ */
 async function renameWithRetry(src: string, dest: string, retries = 3): Promise<void> {
   for (let attempt = 0; attempt < retries; attempt++) {
     try {

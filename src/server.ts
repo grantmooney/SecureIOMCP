@@ -1,3 +1,16 @@
+/**
+ * @module server
+ *
+ * MCP server factory for SecureIOMCP. Creates and configures an
+ * {@link McpServer} instance with all 10 tool registrations (5 read,
+ * 2 write, 3 meta), wiring each tool's Zod input schema to its
+ * corresponding handler function through the security middleware.
+ *
+ * The server uses JSON-over-stdio transport and delegates all security
+ * concerns (access control, redaction, audit logging) to the
+ * {@link SecurityMiddleware} passed into {@link createServer}.
+ */
+
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { SecurityMiddleware } from './security/index.js';
@@ -12,6 +25,16 @@ import { handleSecureAudit } from './tools/meta/secure-audit.js';
 import { handleSecureOverview } from './tools/meta/secure-overview.js';
 import { handleSecureSelfTest } from './tools/meta/secure-self-test.js';
 
+/**
+ * Convert a tool handler result into the MCP text-content response format.
+ *
+ * If the result contains an `error` key, the error object is serialised
+ * as JSON text. Otherwise the entire result (including `results` and `meta`)
+ * is serialised.
+ *
+ * @param result - The raw return value from a tool handler function.
+ * @returns An MCP-compliant response object with a single text content block.
+ */
 function toMcpResult(result: unknown): { content: { type: 'text'; text: string }[] } {
   const r = result as Record<string, unknown>;
   if ('error' in r) {
@@ -20,6 +43,31 @@ function toMcpResult(result: unknown): { content: { type: 'text'; text: string }
   return { content: [{ type: 'text', text: JSON.stringify(result) }] };
 }
 
+/**
+ * Create and configure an MCP server with all SecureIOMCP tools registered.
+ *
+ * Registers the following tools on the returned {@link McpServer}:
+ *
+ * **Read tools:**
+ * - `secure_read` -- read a file with secret redaction
+ * - `secure_search` -- regex search across files with redaction
+ * - `secure_glob` -- find files by glob pattern
+ * - `secure_tree` -- directory structure overview
+ * - `secure_diff` -- redacted git diff
+ *
+ * **Write tools:**
+ * - `secure_write` -- atomic file write with secret scanning
+ * - `secure_patch` -- partial edit with optimistic locking
+ *
+ * **Meta tools:**
+ * - `secure_audit` -- security scan report
+ * - `secure_overview` -- project summary
+ * - `secure_self_test` -- security validation suite
+ *
+ * @param mw - The initialised {@link SecurityMiddleware} instance shared
+ *             by all tool handlers.
+ * @returns A configured {@link McpServer} ready to be connected to a transport.
+ */
 export function createServer(mw: SecurityMiddleware): McpServer {
   const server = new McpServer({
     name: 'secureio-mcp',

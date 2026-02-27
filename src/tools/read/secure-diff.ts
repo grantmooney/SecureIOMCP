@@ -1,3 +1,20 @@
+/**
+ * @module secure-diff
+ *
+ * MCP tool handler for `secure_diff`. Executes `git diff` against the
+ * project repository and returns the output with automatic secret redaction
+ * and denylist enforcement.
+ *
+ * Security pipeline per request:
+ * 1. Run `git diff` with optional ref and path scoping
+ * 2. Parse the raw diff output, identifying per-file hunks
+ * 3. Block diffs for files on the denylist (replaced with `[REDACTED PATH]`)
+ * 4. Redact secrets in added (`+`) and removed (`-`) lines
+ * 5. Audit-log the invocation
+ *
+ * Requires `git` to be available on the system `PATH`.
+ */
+
 import { SecurityMiddleware } from '../../security/middleware.js';
 import { SecureResponse } from '../../types/response.js';
 import { SecureIOError } from '../../types/errors.js';
@@ -6,17 +23,45 @@ import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
 
+/**
+ * Parameters accepted by the `secure_diff` MCP tool.
+ *
+ * @property ref  - Optional git ref (commit, branch, tag) to diff against.
+ *                  When omitted, diffs the working tree against the index.
+ * @property path - Optional path to scope the diff to a specific file or directory.
+ */
 export interface SecureDiffParams {
   ref?: string;
   path?: string;
 }
 
+/**
+ * Result returned by the `secure_diff` tool after redaction.
+ *
+ * @property diff           - The redacted diff text.
+ * @property files_changed  - Number of files included in the diff.
+ * @property redacted_hunks - Number of file diffs that were fully blocked
+ *                            because the file is on the denylist.
+ */
 export interface DiffResult {
   diff: string;
   files_changed: number;
   redacted_hunks: number;
 }
 
+/**
+ * Handle a `secure_diff` tool invocation.
+ *
+ * Spawns `git diff` in the project root, parses the output through
+ * {@link redactDiff} to block denylist files and redact secrets, then
+ * returns the sanitised diff with metadata. The invocation is recorded
+ * in the audit log.
+ *
+ * @param mw     - The initialised {@link SecurityMiddleware} instance.
+ * @param params - Validated tool parameters (optional ref and path).
+ * @returns A {@link SecureResponse} containing a {@link DiffResult},
+ *          or an object with a {@link SecureIOError} on failure.
+ */
 export async function handleSecureDiff(
   mw: SecurityMiddleware,
   params: SecureDiffParams,
@@ -85,6 +130,21 @@ export async function handleSecureDiff(
   };
 }
 
+/**
+ * Redact a raw git diff string by blocking denylist files and redacting
+ * secrets in changed lines.
+ *
+ * For each file header (`diff --git a/... b/...`), the file path is
+ * checked against the access-control denylist. If the file is blocked,
+ * the entire hunk is replaced with a redaction notice. For allowed files,
+ * added and removed lines are individually passed through the security
+ * middleware's secret redactor.
+ *
+ * @param rawDiff - The raw `git diff` output string.
+ * @param mw      - The security middleware providing access-control and redaction.
+ * @returns An object containing the redacted diff text, the total number
+ *          of files changed, and the count of fully redacted hunks.
+ */
 function redactDiff(
   rawDiff: string,
   mw: SecurityMiddleware,
@@ -141,6 +201,15 @@ function redactDiff(
   };
 }
 
+/**
+ * Extract the file path from a `diff --git` header line.
+ *
+ * Parses lines of the form `diff --git a/path/to/file b/path/to/file`
+ * and returns the path portion after `a/`.
+ *
+ * @param diffHeader - A single diff header line starting with `diff --git`.
+ * @returns The extracted file path, or an empty string if parsing fails.
+ */
 function extractFilePath(diffHeader: string): string {
   // diff --git a/path/to/file b/path/to/file
   const match = diffHeader.match(/diff --git a\/(.+?) b\//);

@@ -1,4 +1,18 @@
 #!/usr/bin/env node
+/**
+ * @module index
+ *
+ * CLI entry point for the SecureIOMCP server. Parses command-line arguments,
+ * loads the merged configuration (system policy + project config + CLI flags),
+ * initialises the security middleware, and either runs the self-test suite
+ * or starts the MCP server on stdio transport.
+ *
+ * Usage:
+ * ```
+ * secureio-mcp [--preset strict|standard] [--root <path>]
+ *              [--audit-output file|stderr|none] [--self-test] [-h|--help]
+ * ```
+ */
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { loadConfig } from './config/loader.js';
 import { SecurityMiddleware } from './security/index.js';
@@ -6,6 +20,15 @@ import { createServer } from './server.js';
 import { handleSecureSelfTest } from './tools/meta/secure-self-test.js';
 import type { Preset } from './types/config.js';
 
+/**
+ * Structured representation of parsed CLI arguments.
+ *
+ * @property preset      - Security preset override (`strict` or `standard`).
+ * @property root        - Project root directory override.
+ * @property auditOutput - Audit log destination override.
+ * @property selfTest    - Whether to run the self-test suite and exit.
+ * @property help        - Whether to print usage information and exit.
+ */
 interface ParsedArgs {
   preset?: Preset;
   root?: string;
@@ -14,6 +37,19 @@ interface ParsedArgs {
   help: boolean;
 }
 
+/**
+ * Parse raw CLI argument strings into a structured {@link ParsedArgs} object.
+ *
+ * Supports the following flags:
+ * - `--help` / `-h` -- print usage and exit
+ * - `--self-test` -- run security validation suite and exit
+ * - `--preset <strict|standard>` -- override the security preset
+ * - `--root <path>` -- override the project root directory
+ * - `--audit-output <file|stderr|none>` -- override the audit log destination
+ *
+ * @param argv - The argument array (typically `process.argv.slice(2)`).
+ * @returns A populated {@link ParsedArgs} object.
+ */
 function parseArgs(argv: string[]): ParsedArgs {
   const args: ParsedArgs = { selfTest: false, help: false };
 
@@ -41,6 +77,11 @@ function parseArgs(argv: string[]): ParsedArgs {
   return args;
 }
 
+/**
+ * Print the CLI usage/help text to stderr.
+ *
+ * Outputs a summary of all supported command-line flags and their defaults.
+ */
 function printUsage(): void {
   const usage = `SecureIOMCP — Secure, token-efficient MCP server for AI agents
 
@@ -56,6 +97,16 @@ Options:
   process.stderr.write(usage);
 }
 
+/**
+ * Main application entry point.
+ *
+ * Parses CLI arguments, loads configuration, and either:
+ * - prints usage (if `--help`),
+ * - runs the self-test suite and exits with code 1 on failure (if `--self-test`), or
+ * - starts the MCP server on stdio transport for normal operation.
+ *
+ * @param argv - Optional argument array; defaults to `process.argv.slice(2)`.
+ */
 export async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
   const args = parseArgs(argv);
 

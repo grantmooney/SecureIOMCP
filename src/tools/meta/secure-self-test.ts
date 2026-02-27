@@ -1,10 +1,38 @@
+/**
+ * @module secure-self-test
+ *
+ * MCP tool handler for `secure_self_test`. Runs a built-in validation suite
+ * that exercises the security middleware's core defences at runtime, suitable
+ * for deployment smoke-testing via the `--self-test` CLI flag.
+ *
+ * The suite is organised into four test categories:
+ * 1. **Pattern detection** -- verifies that known secret formats (AWS keys,
+ *    GitHub tokens, Stripe keys, private key blocks, JWTs, connection strings,
+ *    generic passwords) are correctly identified by the redaction engine.
+ * 2. **Path traversal prevention** -- confirms that `../`, `..\\`, and
+ *    absolute paths outside the project root are rejected by the path resolver.
+ * 3. **Denylist enforcement** -- checks that immutable denylist entries
+ *    (`.env`, `*.pem`, `*.key`, `.ssh/`, `.aws/`, `.secureio/`, `.secureiorc`)
+ *    are blocked by the access-control layer.
+ * 4. **False positive prevention** -- ensures that common safe strings
+ *    (UUIDs, simple code, imports, URLs) do not trigger secret detection.
+ *
+ * No parameters are required; the tool always runs the full suite.
+ */
+
 import { SecurityMiddleware } from '../../security/middleware.js';
 import { SelfTestResult, SelfTestCategory, SecureResponse } from '../../types/response.js';
 import { SecureIOError } from '../../types/errors.js';
 import { HIGH_CONFIDENCE_PATTERNS, MEDIUM_CONFIDENCE_PATTERNS } from '../../security/patterns.js';
 import { RedactionEngine } from '../../security/redaction-engine.js';
 
-// Built-in test corpus (subset for runtime validation)
+/**
+ * Test corpus of known secret formats.
+ *
+ * Each entry is a `[category, testValue]` tuple where `category` is a
+ * human-readable label and `testValue` is a representative string that
+ * the redaction engine must detect.
+ */
 const SECRET_TEST_CASES: [string, string][] = [
   ['AWS_ACCESS_KEY', 'AKIAIOSFODNN7EXAMPLE'],
   ['GITHUB_TOKEN', 'ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijkl'],
@@ -15,6 +43,12 @@ const SECRET_TEST_CASES: [string, string][] = [
   ['GENERIC_SECRET', 'password = "MyS3cur3P@ssw0rd!"'],
 ];
 
+/**
+ * Test corpus of path traversal attack strings.
+ *
+ * Each entry is a relative or absolute path that must be rejected by the
+ * path resolver to prevent directory-traversal attacks.
+ */
 const TRAVERSAL_TEST_CASES: string[] = [
   '../etc/passwd',
   '../../etc/passwd',
@@ -22,6 +56,12 @@ const TRAVERSAL_TEST_CASES: string[] = [
   '/etc/passwd',
 ];
 
+/**
+ * Test corpus of denylist-protected file paths.
+ *
+ * Each entry is a relative path that must be blocked by the access-control
+ * denylist regardless of project configuration.
+ */
 const DENYLIST_TEST_CASES: string[] = [
   '.env',
   '.env.local',
@@ -33,10 +73,30 @@ const DENYLIST_TEST_CASES: string[] = [
   '.secureiorc',
 ];
 
+/**
+ * Parameters accepted by the `secure_self_test` MCP tool.
+ *
+ * This tool takes no parameters -- it always runs the full validation suite.
+ */
 export interface SecureSelfTestParams {
   // No params needed — runs full validation suite
 }
 
+/**
+ * Handle a `secure_self_test` tool invocation.
+ *
+ * Executes all four test categories ({@link testPatternDetection},
+ * {@link testTraversalPrevention}, {@link testDenylistEnforcement},
+ * {@link testFalsePositivePrevention}) and aggregates their results.
+ * The overall `passed` flag is `true` only if every category passes.
+ * The invocation is recorded in the audit log with a `warning` severity
+ * when any test fails.
+ *
+ * @param mw      - The initialised {@link SecurityMiddleware} instance.
+ * @param _params - Unused (no parameters are required).
+ * @returns A {@link SecureResponse} containing a {@link SelfTestResult},
+ *          or an object with a {@link SecureIOError} on failure.
+ */
 export async function handleSecureSelfTest(
   mw: SecurityMiddleware,
   _params: SecureSelfTestParams,
@@ -90,6 +150,13 @@ export async function handleSecureSelfTest(
   };
 }
 
+/**
+ * Test that all known secret patterns in {@link SECRET_TEST_CASES} are
+ * detected by the redaction engine.
+ *
+ * @param mw - The security middleware providing the `redactLine` method.
+ * @returns A {@link SelfTestCategory} with the `pattern_detection` results.
+ */
 function testPatternDetection(mw: SecurityMiddleware): SelfTestCategory {
   const failures: string[] = [];
   for (const [category, testValue] of SECRET_TEST_CASES) {
@@ -106,6 +173,13 @@ function testPatternDetection(mw: SecurityMiddleware): SelfTestCategory {
   };
 }
 
+/**
+ * Test that all path traversal strings in {@link TRAVERSAL_TEST_CASES}
+ * are rejected by the path resolver.
+ *
+ * @param mw - The security middleware providing the `pathResolver`.
+ * @returns A {@link SelfTestCategory} with the `traversal_prevention` results.
+ */
 function testTraversalPrevention(mw: SecurityMiddleware): SelfTestCategory {
   const failures: string[] = [];
   for (const traversal of TRAVERSAL_TEST_CASES) {
@@ -122,6 +196,13 @@ function testTraversalPrevention(mw: SecurityMiddleware): SelfTestCategory {
   };
 }
 
+/**
+ * Test that all paths in {@link DENYLIST_TEST_CASES} are blocked by the
+ * access-control denylist.
+ *
+ * @param mw - The security middleware providing the `accessControl` layer.
+ * @returns A {@link SelfTestCategory} with the `denylist_enforcement` results.
+ */
 function testDenylistEnforcement(mw: SecurityMiddleware): SelfTestCategory {
   const failures: string[] = [];
   for (const denied of DENYLIST_TEST_CASES) {
@@ -137,6 +218,16 @@ function testDenylistEnforcement(mw: SecurityMiddleware): SelfTestCategory {
   };
 }
 
+/**
+ * Test that common safe strings do not trigger false positive secret
+ * detections.
+ *
+ * Uses a standalone {@link RedactionEngine} with entropy detection disabled
+ * to verify that UUIDs, simple code statements, scoped-package imports,
+ * and HTTPS URLs pass through without being flagged.
+ *
+ * @returns A {@link SelfTestCategory} with the `false_positive_prevention` results.
+ */
 function testFalsePositivePrevention(): SelfTestCategory {
   // Test that common safe patterns don't trigger false positives
   const engine = new RedactionEngine({ entropyDetection: false });

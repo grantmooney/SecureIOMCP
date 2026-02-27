@@ -1,13 +1,49 @@
+/**
+ * @module secure-read
+ *
+ * MCP tool handler for `secure_read`. Reads files from the project with
+ * automatic secret redaction, encoding detection, and binary-file rejection.
+ *
+ * Security pipeline per request:
+ * 1. Access-control check (denylist + bounds)
+ * 2. Binary-file detection (rejected with a safe error)
+ * 3. Encoding detection (UTF-8 / UTF-16 via BOM) with transcoding
+ * 4. Secret redaction on every returned line
+ * 5. Audit-log entry (including any redacted line numbers)
+ *
+ * Supports optional line-range parameters (`start_line`, `end_line`) for
+ * token-efficient partial reads.
+ */
+
 import { SecurityMiddleware } from '../../security/middleware.js';
 import { ReadResult, SecureResponse } from '../../types/response.js';
 import { SecureIOError } from '../../types/errors.js';
 
+/**
+ * Parameters accepted by the `secure_read` MCP tool.
+ *
+ * @property path       - File path relative to the project root.
+ * @property start_line - Optional 1-indexed start line (defaults to 1).
+ * @property end_line   - Optional 1-indexed end line (clamped to file length and max-read-lines limit).
+ */
 export interface SecureReadParams {
   path: string;
   start_line?: number;
   end_line?: number;
 }
 
+/**
+ * Handle a `secure_read` tool invocation.
+ *
+ * Reads the target file through the security middleware, applies line-range
+ * selection, redacts secrets, and returns the content together with pagination
+ * metadata. All access — whether granted or denied — is recorded in the audit log.
+ *
+ * @param mw     - The initialised {@link SecurityMiddleware} instance.
+ * @param params - Validated tool parameters (path, optional line range).
+ * @returns A {@link SecureResponse} containing the file content and metadata,
+ *          or an object with a {@link SecureIOError} on failure.
+ */
 export async function handleSecureRead(
   mw: SecurityMiddleware,
   params: SecureReadParams,

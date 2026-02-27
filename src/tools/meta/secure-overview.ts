@@ -1,14 +1,56 @@
+/**
+ * @module secure-overview
+ *
+ * MCP tool handler for `secure_overview`. Produces a high-level project
+ * summary by inspecting configuration files, lock files, and the directory
+ * structure. The summary is designed to give AI agents rapid context about
+ * a codebase without reading individual source files.
+ *
+ * Detection heuristics:
+ * - **Language**: inferred from `tsconfig.json`, `pyproject.toml`, `Cargo.toml`,
+ *   `go.mod`, or falling back to dependency inspection in `package.json`.
+ * - **Framework**: detected from well-known dependency names (Next.js, React,
+ *   Vue, Angular, Express, Fastify, Koa, Hono, Nuxt).
+ * - **Package manager**: identified by lock-file presence (`bun.lockb`,
+ *   `pnpm-lock.yaml`, `yarn.lock`, `package-lock.json`).
+ * - **Entry points**: extracted from `package.json` fields (`main`, `module`, `bin`).
+ * - **Structure**: a shallow (depth-2) directory summary built by
+ *   {@link buildStructureSummary}.
+ */
+
 import { SecurityMiddleware } from '../../security/middleware.js';
 import { OverviewResult, SecureResponse } from '../../types/response.js';
 import { SecureIOError } from '../../types/errors.js';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 
+/**
+ * Parameters accepted by the `secure_overview` MCP tool.
+ *
+ * @property path    - Optional subdirectory to treat as the project root
+ *                     (relative to the configured project root).
+ * @property verbose - Reserved for future use; currently has no effect on output.
+ */
 export interface SecureOverviewParams {
   path?: string;
   verbose?: boolean;
 }
 
+/**
+ * Handle a `secure_overview` tool invocation.
+ *
+ * Inspects the project root (or a scoped subdirectory) for configuration
+ * files, lock files, and directory structure. Assembles an
+ * {@link OverviewResult} containing the detected language, framework,
+ * package manager, entry points, npm scripts, dependency counts, top-level
+ * directory structure, and a list of recognised configuration files.
+ * The invocation is recorded in the audit log.
+ *
+ * @param mw     - The initialised {@link SecurityMiddleware} instance.
+ * @param params - Validated tool parameters.
+ * @returns A {@link SecureResponse} containing an {@link OverviewResult},
+ *          or an object with a {@link SecureIOError} on failure.
+ */
 export async function handleSecureOverview(
   mw: SecurityMiddleware,
   params: SecureOverviewParams,
@@ -161,6 +203,19 @@ export async function handleSecureOverview(
   };
 }
 
+/**
+ * Build a shallow text-based directory structure summary.
+ *
+ * Recursively walks up to depth 2, listing subdirectory names (with a
+ * trailing `/`) and summarising the file count at each level. Well-known
+ * non-source directories (`node_modules`, `.git`, `dist`, `build`, `vendor`)
+ * are skipped.
+ *
+ * @param root - Absolute path of the directory to summarise.
+ * @param mw   - The security middleware (unused in the current implementation
+ *               but available for future access-control filtering).
+ * @returns A newline-separated string representing the directory structure.
+ */
 async function buildStructureSummary(root: string, mw: SecurityMiddleware): Promise<string> {
   const skipDirs = new Set(['node_modules', '.git', 'dist', 'build', 'vendor']);
   const lines: string[] = [];

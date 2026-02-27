@@ -1,3 +1,18 @@
+/**
+ * @module secure-audit
+ *
+ * MCP tool handler for `secure_audit`. Performs a security scan of the
+ * project tree (or a subdirectory) and produces a summary report of
+ * blocked files and detected secrets.
+ *
+ * The scan walks the file system, checking each file against the
+ * access-control denylist and running the redaction engine over readable
+ * text files. Binary files are automatically skipped.
+ *
+ * When `verbose` mode is enabled, the response includes per-file detail
+ * records listing the specific redaction locations and categories.
+ */
+
 import { SecurityMiddleware } from '../../security/middleware.js';
 import { AuditResult, AuditFileDetail, SecureResponse } from '../../types/response.js';
 import { SecureIOError } from '../../types/errors.js';
@@ -6,11 +21,32 @@ import fsp from 'node:fs/promises';
 import fs from 'node:fs';
 import path from 'node:path';
 
+/**
+ * Parameters accepted by the `secure_audit` MCP tool.
+ *
+ * @property path    - Optional subdirectory to scope the audit to (relative to project root).
+ * @property verbose - When `true`, include per-file details in the response
+ *                     (blocked status, redaction line numbers and categories).
+ */
 export interface SecureAuditParams {
   path?: string;
   verbose?: boolean;
 }
 
+/**
+ * Handle a `secure_audit` tool invocation.
+ *
+ * Recursively walks the project tree starting from the given (or default)
+ * root, counts files blocked by the denylist, scans allowed text files for
+ * secrets using the redaction engine, and assembles a summary report. In
+ * verbose mode the report includes an array of per-file detail records.
+ * The invocation is recorded in the audit log.
+ *
+ * @param mw     - The initialised {@link SecurityMiddleware} instance.
+ * @param params - Validated tool parameters.
+ * @returns A {@link SecureResponse} containing an {@link AuditResult},
+ *          or an object with a {@link SecureIOError} on failure.
+ */
 export async function handleSecureAudit(
   mw: SecurityMiddleware,
   params: SecureAuditParams,

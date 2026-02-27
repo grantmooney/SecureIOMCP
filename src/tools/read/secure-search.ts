@@ -1,3 +1,20 @@
+/**
+ * @module secure-search
+ *
+ * MCP tool handler for `secure_search`. Performs regex-based search across
+ * project files with automatic secret redaction on every matched and
+ * context line.
+ *
+ * Features:
+ * - Regular-expression pattern matching (case-insensitive, global)
+ * - Optional file-extension filtering (`file_pattern`)
+ * - Configurable context lines before and after each match
+ * - Pagination via `offset` / `max_results`
+ * - Binary-file skipping (512-byte head probe)
+ * - Access-control enforcement per file
+ * - Audit logging of every search invocation
+ */
+
 import { SecurityMiddleware } from '../../security/middleware.js';
 import { SearchResult, SecureResponse } from '../../types/response.js';
 import { SecureIOError } from '../../types/errors.js';
@@ -7,6 +24,16 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import readline from 'node:readline';
 
+/**
+ * Parameters accepted by the `secure_search` MCP tool.
+ *
+ * @property pattern       - Regex pattern to search for (compiled with `gi` flags).
+ * @property path          - Optional subdirectory to scope the search to (relative to project root).
+ * @property file_pattern  - Optional file glob filter, e.g. `*.ts`.
+ * @property context_lines - Number of context lines before and after each match (default 2).
+ * @property max_results   - Maximum number of results to return.
+ * @property offset        - Number of matches to skip for pagination.
+ */
 export interface SecureSearchParams {
   pattern: string;
   path?: string;
@@ -16,6 +43,19 @@ export interface SecureSearchParams {
   offset?: number;
 }
 
+/**
+ * Handle a `secure_search` tool invocation.
+ *
+ * Validates the regex pattern, collects eligible files via {@link collectFiles},
+ * streams each file line-by-line, matches against the pattern, redacts secrets
+ * in matched and context lines, and paginates results through a
+ * {@link ResponseBuilder}. The search is logged to the audit trail.
+ *
+ * @param mw     - The initialised {@link SecurityMiddleware} instance.
+ * @param params - Validated tool parameters.
+ * @returns A {@link SecureResponse} containing an array of {@link SearchResult}
+ *          objects, or an object with a {@link SecureIOError} on failure.
+ */
 export async function handleSecureSearch(
   mw: SecurityMiddleware,
   params: SecureSearchParams,
@@ -150,6 +190,20 @@ export async function handleSecureSearch(
   return builder.build();
 }
 
+/**
+ * Recursively collect file paths eligible for searching.
+ *
+ * Walks the directory tree starting from `dir`, skipping well-known
+ * non-source directories (`node_modules`, `.git`, `dist`, `build`, `vendor`),
+ * filtering by the access-control denylist, and optionally restricting to
+ * files matching a given extension pattern.
+ *
+ * @param dir         - Absolute path of the directory to walk.
+ * @param projectRoot - Absolute path of the project root (used for relative-path computation).
+ * @param mw          - The security middleware providing access-control checks.
+ * @param filePattern - Optional extension filter, e.g. `*.ts` or `.ts`.
+ * @returns A sorted array of project-root-relative file paths.
+ */
 async function collectFiles(
   dir: string,
   projectRoot: string,
