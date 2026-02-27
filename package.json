@@ -1,6 +1,6 @@
 {
   "name": "secureio-mcp",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Secure, token-efficient MCP server for AI agent codebase access",
   "type": "module",
   "main": "dist/index.js",
