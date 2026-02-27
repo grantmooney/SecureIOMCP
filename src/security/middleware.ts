@@ -9,10 +9,36 @@ import { CompiledPattern } from '../types/patterns.js';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
+/**
+ * Discriminated union result of a security access check.
+ * On success, contains the validated absolute path. On failure, contains a safe error.
+ */
 export type SecurityCheckResult =
   | { ok: true; absolutePath: string }
   | { ok: false; error: SecureIOError };
 
+/**
+ * Central security middleware that wraps every MCP tool invocation.
+ * The security layer is mandatory -- there is no way to bypass it.
+ *
+ * Orchestrates path resolution, access control, encoding detection,
+ * secret redaction, and audit logging across all read and write operations.
+ *
+ * @example
+ * ```typescript
+ * const mw = new SecurityMiddleware(config);
+ *
+ * // Read flow: check access -> read with redaction
+ * const access = await mw.checkReadAccess('src/config.ts');
+ * if (access.ok) {
+ *   const { content, redactedLines } = await mw.readFileSecure(access.absolutePath);
+ * }
+ *
+ * // Write flow: check access -> scan for secrets
+ * const writeAccess = await mw.checkWriteAccess('src/output.ts');
+ * const secretError = mw.scanWriteContent(newContent);
+ * ```
+ */
 export class SecurityMiddleware {
   readonly pathResolver: PathResolver;
   readonly accessControl: AccessControl;
@@ -42,7 +68,14 @@ export class SecurityMiddleware {
     });
   }
 
-  /** Validate a path for read access */
+  /**
+   * Validates a relative path for read access through the full security pipeline.
+   * Resolves the path against the project root, checks the denylist and gitignore rules.
+   * Error responses never expose filesystem details (CWE-209 prevention).
+   *
+   * @param relativePath - Path relative to the project root
+   * @returns Validated absolute path on success, or a safe error on denial
+   */
   async checkReadAccess(relativePath: string): Promise<SecurityCheckResult> {
     const resolved = this.pathResolver.resolve(relativePath);
     if (!resolved.ok) return resolved;
@@ -62,7 +95,13 @@ export class SecurityMiddleware {
     return { ok: true, absolutePath: resolved.path };
   }
 
-  /** Validate a path for write access */
+  /**
+   * Validates a relative path for write access through the full security pipeline.
+   * Uses the same validation as read access but with a write-specific error message.
+   *
+   * @param relativePath - Path relative to the project root
+   * @returns Validated absolute path on success, or a safe error on denial
+   */
   async checkWriteAccess(relativePath: string): Promise<SecurityCheckResult> {
     const resolved = this.pathResolver.resolve(relativePath);
     if (!resolved.ok) return resolved;
@@ -82,7 +121,15 @@ export class SecurityMiddleware {
     return { ok: true, absolutePath: resolved.path };
   }
 
-  /** Read a file with encoding detection and redaction */
+  /**
+   * Reads a file with automatic encoding detection, transcoding, and secret redaction.
+   * Pipeline: read raw bytes -> detect encoding -> transcode to UTF-8 -> redact each line.
+   * All content passes through the redaction engine -- there is no code path that bypasses it.
+   *
+   * @param absolutePath - Validated absolute path to the file
+   * @returns Redacted content, detected encoding, and line numbers where redaction occurred
+   * @throws `{ code: 'BINARY_FILE' }` if the file appears to be binary
+   */
   async readFileSecure(absolutePath: string): Promise<{ content: string; encoding: string; redactedLines: number[] }> {
     const rawBuffer = await fs.readFile(absolutePath);
 
@@ -111,7 +158,14 @@ export class SecurityMiddleware {
     };
   }
 
-  /** Scan write content for secrets — returns error if secrets found */
+  /**
+   * Scans content intended for a write operation for secrets.
+   * Returns `null` if the content is clean, or a `SecureIOError` identifying
+   * the first detected secret (line number and category, never the value itself).
+   *
+   * @param content - The content to scan before writing
+   * @returns `null` if clean, or an error with the detected secret's category and line
+   */
   scanWriteContent(content: string): SecureIOError | null {
     const lines = content.split('\n');
     for (let i = 0; i < lines.length; i++) {
@@ -128,7 +182,12 @@ export class SecurityMiddleware {
     return null;
   }
 
-  /** Redact a single line of text */
+  /**
+   * Redacts secrets from a single line of text using the redaction engine.
+   *
+   * @param line - The line of text to redact
+   * @returns The redacted text and any matches found
+   */
   redactLine(line: string): RedactResult {
     return this.redactionEngine.redactLine(line);
   }

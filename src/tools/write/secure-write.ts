@@ -5,11 +5,24 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
 
+/** Parameters for the `secure_write` MCP tool. */
 export interface SecureWriteParams {
+  /** File path relative to the project root */
   path: string;
+  /** File content to write */
   content: string;
 }
 
+/**
+ * Handles the `secure_write` MCP tool: writes a file with secret scanning.
+ * Pipeline: check size limit -> check write access -> scan for secrets -> atomic write.
+ * Rejects content containing detected secrets (returns category and line, not the value).
+ * Uses atomic writes (temp file + rename) with retry for Windows file locking.
+ *
+ * @param mw - Security middleware instance
+ * @param params - Tool parameters including path and content
+ * @returns Write result with SHA-256 hash on success, or a safe error response
+ */
 export async function handleSecureWrite(
   mw: SecurityMiddleware,
   params: SecureWriteParams,
@@ -103,6 +116,11 @@ export async function handleSecureWrite(
   }
 }
 
+/**
+ * Renames a file with retry logic for Windows EPERM errors.
+ * On Windows, `rename` can fail with EPERM if the target file is locked by another process.
+ * Retries up to 3 times with 100ms backoff between attempts.
+ */
 async function renameWithRetry(src: string, dest: string, retries = 3): Promise<void> {
   for (let attempt = 0; attempt < retries; attempt++) {
     try {

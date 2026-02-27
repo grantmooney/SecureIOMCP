@@ -1,5 +1,20 @@
+/**
+ * Detected file encoding based on Byte Order Mark (BOM) analysis.
+ *
+ * - `'utf-8'` -- No BOM detected, assumed UTF-8
+ * - `'utf-8-bom'` -- UTF-8 with explicit BOM (0xEF 0xBB 0xBF)
+ * - `'utf-16le'` -- UTF-16 Little Endian (0xFF 0xFE)
+ * - `'utf-16be'` -- UTF-16 Big Endian (0xFE 0xFF)
+ */
 export type DetectedEncoding = 'utf-8' | 'utf-8-bom' | 'utf-16le' | 'utf-16be';
 
+/**
+ * Detects file encoding by inspecting the Byte Order Mark (BOM).
+ * Files without a BOM are assumed to be UTF-8.
+ *
+ * @param buffer - Raw file buffer to analyze
+ * @returns The detected encoding type
+ */
 export function detectEncoding(buffer: Buffer): DetectedEncoding {
   if (buffer.length >= 3 &&
       buffer[0] === 0xEF && buffer[1] === 0xBB && buffer[2] === 0xBF) {
@@ -14,6 +29,14 @@ export function detectEncoding(buffer: Buffer): DetectedEncoding {
   return 'utf-8';
 }
 
+/**
+ * Transcodes a file buffer to a UTF-8 string, handling BOM stripping and byte-swapping.
+ * UTF-16BE files are byte-swapped to UTF-16LE before decoding since Node.js only
+ * natively supports UTF-16LE.
+ *
+ * @param buffer - Raw file buffer to transcode
+ * @returns UTF-8 string content with BOM removed
+ */
 export function transcodeToUtf8(buffer: Buffer): string {
   const encoding = detectEncoding(buffer);
 
@@ -36,6 +59,13 @@ export function transcodeToUtf8(buffer: Buffer): string {
   }
 }
 
+/**
+ * Checks whether a file appears to be binary by scanning for null bytes in the first 512 bytes.
+ * UTF-16 encoded files (which naturally contain null bytes) are excluded from this check.
+ *
+ * @param buffer - Raw file buffer to analyze
+ * @returns `true` if the file appears to be binary
+ */
 export function isBinary(buffer: Buffer): boolean {
   const checkLength = Math.min(buffer.length, 512);
   for (let i = 0; i < checkLength; i++) {

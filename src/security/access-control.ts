@@ -2,6 +2,11 @@ import ignore, { Ignore } from 'ignore';
 import fs from 'node:fs';
 import path from 'node:path';
 
+/**
+ * Immutable denylist of file patterns that are always blocked regardless of configuration.
+ * These entries cannot be removed or overridden -- users can only extend the denylist.
+ * Covers environment files, certificates, credential directories, and the audit trail.
+ */
 const IMMUTABLE_DENYLIST = [
   '.env',
   '.env.*',
@@ -19,10 +24,27 @@ const IMMUTABLE_DENYLIST = [
   '.secureiorc',
 ];
 
+/** Options for configuring the access control layer. */
 export interface AccessControlOptions {
+  /** Additional glob patterns to add to the denylist (supplements immutable built-ins) */
   extendDenylist: string[];
 }
 
+/**
+ * Access control layer that combines an immutable denylist with `.gitignore` rules
+ * to determine which files are accessible to agents.
+ *
+ * The denylist is extend-only: built-in protections (`.env`, `*.pem`, `.secureio/`, etc.)
+ * are always enforced and cannot be removed via configuration.
+ *
+ * @example
+ * ```typescript
+ * const ac = new AccessControl('/project/root', { extendDenylist: ['*.tfvars'] });
+ * ac.isAllowed('src/index.ts');    // true
+ * ac.isAllowed('.env');             // false (immutable denylist)
+ * ac.isAllowed('secrets.tfvars');   // false (extended denylist)
+ * ```
+ */
 export class AccessControl {
   private denylist: Ignore;
   private gitignore: Ignore;
@@ -38,6 +60,12 @@ export class AccessControl {
     this.loadGitignore(projectRoot, projectRoot);
   }
 
+  /**
+   * Checks whether a file path is accessible (not blocked by denylist or gitignore).
+   *
+   * @param relativePath - Path relative to the project root (forward slashes)
+   * @returns `true` if the file is accessible, `false` if blocked
+   */
   isAllowed(relativePath: string): boolean {
     const normalized = relativePath.replace(/\\/g, '/');
 
@@ -52,6 +80,11 @@ export class AccessControl {
     return true;
   }
 
+  /**
+   * Recursively loads `.gitignore` files from the directory tree.
+   * Skips `node_modules` and `.git` directories. Only uses project-scoped ignore rules
+   * (not global gitignore or `.git/info/exclude`).
+   */
   private loadGitignore(dir: string, projectRoot: string): void {
     const gitignorePath = path.join(dir, '.gitignore');
     try {

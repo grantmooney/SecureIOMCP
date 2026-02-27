@@ -1,6 +1,23 @@
 import { ResponseMeta, SecureResponse } from './types/response.js';
 import { LimitsConfig } from './types/config.js';
 
+/**
+ * Generic response builder for constructing paginated, size-limited tool responses.
+ * Tracks item count, byte size, line truncation, and redaction counts against
+ * configured limits, and produces a standard {@link SecureResponse} envelope.
+ *
+ * @typeParam T - The individual result item type
+ *
+ * @example
+ * ```typescript
+ * const builder = new ResponseBuilder<SearchResult>(config.limits, offset);
+ * builder.setTotal(totalMatches);
+ * for (const match of matches) {
+ *   if (!builder.add(match)) break; // Limit reached
+ * }
+ * return builder.build();
+ * ```
+ */
 export class ResponseBuilder<T> {
   private items: T[] = [];
   private totalAvailable = 0;
@@ -16,15 +33,23 @@ export class ResponseBuilder<T> {
     this.offset = offset;
   }
 
+  /** Sets the total number of available results (for pagination metadata). */
   setTotal(total: number): void {
     this.totalAvailable = total;
   }
 
+  /** Increments the redaction counter by the given count. */
   addRedactions(count: number): void {
     this.redactionCount += count;
   }
 
-  /** Try to add an item. Returns false if limits are exceeded. */
+  /**
+   * Attempts to add an item to the response. Returns `false` if adding the item
+   * would exceed `maxResultCount` or `maxResponseBytes` limits.
+   *
+   * @param item - The result item to add
+   * @returns `true` if the item was added, `false` if limits are exceeded
+   */
   add(item: T): boolean {
     // Check result count limit
     if (this.items.length >= this.limits.maxResultCount) {
@@ -44,7 +69,12 @@ export class ResponseBuilder<T> {
     return true;
   }
 
-  /** Truncate a line if it exceeds maxLineLength */
+  /**
+   * Truncates a line if it exceeds `maxLineLength`, appending `[TRUNCATED]`.
+   *
+   * @param line - The line to potentially truncate
+   * @returns The original line or truncated version with `[TRUNCATED]` suffix
+   */
   truncateLine(line: string): string {
     if (line.length > this.limits.maxLineLength) {
       this.truncatedLines++;
@@ -53,6 +83,11 @@ export class ResponseBuilder<T> {
     return line;
   }
 
+  /**
+   * Builds the final response envelope with results and pagination metadata.
+   *
+   * @returns A {@link SecureResponse} containing all added items and metadata
+   */
   build(): SecureResponse<T[]> {
     return {
       results: this.items,

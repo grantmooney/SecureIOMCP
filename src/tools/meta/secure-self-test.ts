@@ -4,7 +4,10 @@ import { SecureIOError } from '../../types/errors.js';
 import { HIGH_CONFIDENCE_PATTERNS, MEDIUM_CONFIDENCE_PATTERNS } from '../../security/patterns.js';
 import { RedactionEngine } from '../../security/redaction-engine.js';
 
-// Built-in test corpus (subset for runtime validation)
+/**
+ * Built-in test corpus of known secret formats for runtime validation.
+ * Each entry is a `[category, testValue]` pair that must be detected by the redaction engine.
+ */
 const SECRET_TEST_CASES: [string, string][] = [
   ['AWS_ACCESS_KEY', 'AKIAIOSFODNN7EXAMPLE'],
   ['GITHUB_TOKEN', 'ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijkl'],
@@ -15,6 +18,7 @@ const SECRET_TEST_CASES: [string, string][] = [
   ['GENERIC_SECRET', 'password = "MyS3cur3P@ssw0rd!"'],
 ];
 
+/** Path traversal attack vectors that must be blocked by the path resolver. */
 const TRAVERSAL_TEST_CASES: string[] = [
   '../etc/passwd',
   '../../etc/passwd',
@@ -22,6 +26,7 @@ const TRAVERSAL_TEST_CASES: string[] = [
   '/etc/passwd',
 ];
 
+/** Sensitive file patterns that must be blocked by the access control denylist. */
 const DENYLIST_TEST_CASES: string[] = [
   '.env',
   '.env.local',
@@ -33,10 +38,21 @@ const DENYLIST_TEST_CASES: string[] = [
   '.secureiorc',
 ];
 
+/** Parameters for the `secure_self_test` MCP tool (no parameters required). */
 export interface SecureSelfTestParams {
-  // No params needed — runs full validation suite
+  // No params needed -- runs full validation suite
 }
 
+/**
+ * Handles the `secure_self_test` MCP tool: runs the built-in security validation suite.
+ * Tests four categories: pattern detection, path traversal prevention, denylist enforcement,
+ * and false positive prevention. Used by security teams to verify deployment integrity.
+ * Also available via CLI: `npx secureio-mcp --self-test`
+ *
+ * @param mw - Security middleware instance
+ * @param _params - Unused (no parameters)
+ * @returns Self-test results with pass/fail per category, or a safe error response
+ */
 export async function handleSecureSelfTest(
   mw: SecurityMiddleware,
   _params: SecureSelfTestParams,
@@ -90,6 +106,7 @@ export async function handleSecureSelfTest(
   };
 }
 
+/** Tests that all known secret formats in the test corpus are detected by the redaction engine. */
 function testPatternDetection(mw: SecurityMiddleware): SelfTestCategory {
   const failures: string[] = [];
   for (const [category, testValue] of SECRET_TEST_CASES) {
@@ -106,6 +123,7 @@ function testPatternDetection(mw: SecurityMiddleware): SelfTestCategory {
   };
 }
 
+/** Tests that all path traversal attack vectors are blocked by the path resolver. */
 function testTraversalPrevention(mw: SecurityMiddleware): SelfTestCategory {
   const failures: string[] = [];
   for (const traversal of TRAVERSAL_TEST_CASES) {
@@ -122,6 +140,7 @@ function testTraversalPrevention(mw: SecurityMiddleware): SelfTestCategory {
   };
 }
 
+/** Tests that all sensitive file patterns are blocked by the denylist. */
 function testDenylistEnforcement(mw: SecurityMiddleware): SelfTestCategory {
   const failures: string[] = [];
   for (const denied of DENYLIST_TEST_CASES) {
@@ -137,6 +156,7 @@ function testDenylistEnforcement(mw: SecurityMiddleware): SelfTestCategory {
   };
 }
 
+/** Tests that common safe strings (UUIDs, code, imports, URLs) are not flagged as secrets. */
 function testFalsePositivePrevention(): SelfTestCategory {
   // Test that common safe patterns don't trigger false positives
   const engine = new RedactionEngine({ entropyDetection: false });

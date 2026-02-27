@@ -1,5 +1,18 @@
+/**
+ * Built-in redaction pattern library organized by confidence level.
+ *
+ * - **High confidence**: Patterns with distinct prefixes and very low false positive rates
+ * - **Medium confidence**: Context-anchored patterns that require assignment to recognized variable names
+ * - **Safe patterns**: Known false positive exemptions (UUIDs, git SHAs, SRI hashes)
+ *
+ * @module
+ */
 import { CompiledPattern } from '../types/patterns.js';
 
+/**
+ * High-confidence redaction patterns with distinct prefixes.
+ * These have very low false positive rates and are always applied.
+ */
 export const HIGH_CONFIDENCE_PATTERNS: CompiledPattern[] = [
   {
     name: 'AWS_ACCESS_KEY',
@@ -63,6 +76,10 @@ export const HIGH_CONFIDENCE_PATTERNS: CompiledPattern[] = [
   },
 ];
 
+/**
+ * Medium-confidence redaction patterns that require context anchoring.
+ * These use lookbehinds or variable name matching to reduce false positives.
+ */
 export const MEDIUM_CONFIDENCE_PATTERNS: CompiledPattern[] = [
   {
     name: 'AWS_SECRET_KEY',
@@ -96,7 +113,11 @@ export const MEDIUM_CONFIDENCE_PATTERNS: CompiledPattern[] = [
   },
 ];
 
-/** Known-safe patterns exempt from entropy detection */
+/**
+ * Known-safe patterns exempt from entropy-based detection.
+ * Strings matching these patterns are not flagged even if their Shannon entropy exceeds 4.5.
+ * Covers UUIDs, git commit SHAs, and Subresource Integrity (SRI) hashes.
+ */
 export const SAFE_PATTERNS: RegExp[] = [
   /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi,
   /(?:commit|ref|sha|hash)\s*[=:]*\s*[0-9a-f]{40}/gi,

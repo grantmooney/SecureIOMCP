@@ -12,6 +12,10 @@ import { handleSecureAudit } from './tools/meta/secure-audit.js';
 import { handleSecureOverview } from './tools/meta/secure-overview.js';
 import { handleSecureSelfTest } from './tools/meta/secure-self-test.js';
 
+/**
+ * Serializes a tool handler result into the MCP text content format.
+ * Error responses (containing an `error` property) are serialized as the error object only.
+ */
 function toMcpResult(result: unknown): { content: { type: 'text'; text: string }[] } {
   const r = result as Record<string, unknown>;
   if ('error' in r) {
@@ -20,6 +24,15 @@ function toMcpResult(result: unknown): { content: { type: 'text'; text: string }
   return { content: [{ type: 'text', text: JSON.stringify(result) }] };
 }
 
+/**
+ * Creates and configures the MCP server with all 10 SecureIOMCP tools.
+ * Registers read tools (secure_read, secure_search, secure_glob, secure_tree, secure_diff),
+ * write tools (secure_write, secure_patch), and meta tools (secure_audit, secure_overview,
+ * secure_self_test) with their Zod input schemas.
+ *
+ * @param mw - The security middleware instance passed to all tool handlers
+ * @returns A configured McpServer ready to be connected to a transport
+ */
 export function createServer(mw: SecurityMiddleware): McpServer {
   const server = new McpServer({
     name: 'secureio-mcp',

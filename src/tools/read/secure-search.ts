@@ -7,15 +7,31 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import readline from 'node:readline';
 
+/** Parameters for the `secure_search` MCP tool. */
 export interface SecureSearchParams {
+  /** Regex pattern to search for */
   pattern: string;
+  /** Scope search to this subdirectory */
   path?: string;
+  /** File glob filter (e.g., `*.ts`) */
   file_pattern?: string;
+  /** Number of context lines before and after each match (default: 2) */
   context_lines?: number;
+  /** Maximum results to return */
   max_results?: number;
+  /** Offset for pagination */
   offset?: number;
 }
 
+/**
+ * Handles the `secure_search` MCP tool: searches across files with regex pattern matching.
+ * Collects files (skipping node_modules, .git, etc.), matches regex against each line,
+ * and returns redacted results with surrounding context. Supports pagination via offset.
+ *
+ * @param mw - Security middleware instance
+ * @param params - Tool parameters including the regex pattern
+ * @returns Paginated search results with redacted content, or a safe error response
+ */
 export async function handleSecureSearch(
   mw: SecurityMiddleware,
   params: SecureSearchParams,
@@ -150,6 +166,10 @@ export async function handleSecureSearch(
   return builder.build();
 }
 
+/**
+ * Recursively collects file paths from a directory tree, respecting access control
+ * and optional file pattern filtering. Skips node_modules, .git, dist, build, and vendor.
+ */
 async function collectFiles(
   dir: string,
   projectRoot: string,

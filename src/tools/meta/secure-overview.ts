@@ -4,11 +4,24 @@ import { SecureIOError } from '../../types/errors.js';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 
+/** Parameters for the `secure_overview` MCP tool. */
 export interface SecureOverviewParams {
+  /** Project root to analyze (default: configured project root) */
   path?: string;
+  /** Include full dependency names and versions (default: false) */
   verbose?: boolean;
 }
 
+/**
+ * Handles the `secure_overview` MCP tool: returns a single-call project summary.
+ * Detects framework, language, package manager, entry points, scripts, dependency counts,
+ * directory structure, and configuration files. Replaces multiple glob/read calls with
+ * one token-efficient response.
+ *
+ * @param mw - Security middleware instance
+ * @param params - Tool parameters
+ * @returns Project overview with detected metadata, or a safe error response
+ */
 export async function handleSecureOverview(
   mw: SecurityMiddleware,
   params: SecureOverviewParams,
@@ -161,6 +174,10 @@ export async function handleSecureOverview(
   };
 }
 
+/**
+ * Builds a compact directory structure summary, listing directories and file counts
+ * up to 3 levels deep. Skips node_modules, .git, dist, build, and vendor.
+ */
 async function buildStructureSummary(root: string, mw: SecurityMiddleware): Promise<string> {
   const skipDirs = new Set(['node_modules', '.git', 'dist', 'build', 'vendor']);
   const lines: string[] = [];

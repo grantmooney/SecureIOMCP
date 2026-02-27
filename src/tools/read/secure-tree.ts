@@ -4,11 +4,23 @@ import { SecureIOError } from '../../types/errors.js';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 
+/** Parameters for the `secure_tree` MCP tool. */
 export interface SecureTreeParams {
+  /** Root directory for the tree (default: project root) */
   path?: string;
+  /** Maximum depth to traverse (default: `maxTreeDepth` from config) */
   max_depth?: number;
 }
 
+/**
+ * Handles the `secure_tree` MCP tool: returns a directory structure with file counts.
+ * Recursively traverses directories up to `max_depth`, skipping common non-essential
+ * directories (node_modules, .git, dist, build, vendor). Respects access control.
+ *
+ * @param mw - Security middleware instance
+ * @param params - Tool parameters
+ * @returns Directory tree structure with file counts, or a safe error response
+ */
 export async function handleSecureTree(
   mw: SecurityMiddleware,
   params: SecureTreeParams,

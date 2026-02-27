@@ -1,11 +1,31 @@
 import { CompiledPattern, RedactionMatch } from '../types/patterns.js';
 import { HIGH_CONFIDENCE_PATTERNS, MEDIUM_CONFIDENCE_PATTERNS, SAFE_PATTERNS } from './patterns.js';
 
+/** Result of redacting a single line of text. */
 export interface RedactResult {
+  /** The line content with secrets replaced by `[REDACTED:CATEGORY]` */
   text: string;
+  /** All redaction matches found in this line */
   matches: RedactionMatch[];
 }
 
+/**
+ * Pattern-based and entropy-based secret detection engine.
+ * Applies built-in and custom patterns to detect secrets in text content,
+ * replacing matches with `[REDACTED:CATEGORY]` markers.
+ *
+ * When entropy detection is enabled (strict preset), quoted strings with
+ * Shannon entropy > 4.5 and length >= 20 are also flagged as `[REDACTED:HIGH_ENTROPY]`,
+ * unless they match known-safe patterns (UUIDs, git SHAs, SRI hashes).
+ *
+ * @example
+ * ```typescript
+ * const engine = new RedactionEngine({ entropyDetection: true });
+ * const result = engine.redactLine('const key = "AKIAIOSFODNN7EXAMPLE";');
+ * // result.text: 'const key = "[REDACTED:AWS_ACCESS_KEY]";'
+ * // result.matches: [{ category: 'AWS_ACCESS_KEY', confidence: 'high', ... }]
+ * ```
+ */
 export class RedactionEngine {
   private patterns: CompiledPattern[];
   private entropyEnabled: boolean;
@@ -24,6 +44,14 @@ export class RedactionEngine {
     this.safePatterns = [...SAFE_PATTERNS];
   }
 
+  /**
+   * Redacts secrets from a single line of text.
+   * Applies all compiled patterns (high, medium, and custom) followed by
+   * entropy-based detection if enabled.
+   *
+   * @param line - The line of text to scan for secrets
+   * @returns The redacted text and an array of all matches found
+   */
   redactLine(line: string): RedactResult {
     const matches: RedactionMatch[] = [];
     let result = line;
@@ -55,6 +83,11 @@ export class RedactionEngine {
     return { text: result, matches };
   }
 
+  /**
+   * Detects high-entropy quoted strings that may be unknown secret formats.
+   * Extracts tokens from quoted strings (20+ chars, alphanumeric + special),
+   * checks them against safe patterns, and flags those with Shannon entropy > 4.5.
+   */
   private redactHighEntropy(line: string, matches: RedactionMatch[]): string {
     const tokenRegex = /['"][A-Za-z0-9+/=_\-]{20,}['"]/g;
     let result = line;
@@ -88,6 +121,10 @@ export class RedactionEngine {
     return result;
   }
 
+  /**
+   * Checks whether a token matches any known-safe pattern (UUIDs, git SHAs, SRI hashes).
+   * Safe tokens are exempt from entropy-based detection to reduce false positives.
+   */
   private isSafe(token: string, line: string): boolean {
     for (const safe of this.safePatterns) {
       const regex = new RegExp(safe.source, safe.flags);
@@ -98,6 +135,14 @@ export class RedactionEngine {
     return false;
   }
 
+  /**
+   * Calculates the Shannon entropy of a string.
+   * Higher entropy indicates more randomness, suggesting the string may be a secret.
+   * Threshold for detection is > 4.5.
+   *
+   * @param str - The string to calculate entropy for
+   * @returns Entropy value in bits (0 for empty string, up to log2(alphabet_size) for uniform distribution)
+   */
   shannonEntropy(str: string): number {
     if (str.length === 0) return 0;
     const freq = new Map<string, number>();
