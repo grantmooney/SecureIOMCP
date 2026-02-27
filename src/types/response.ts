@@ -11,20 +11,8 @@ export interface ResponseMeta {
   offset: number;
   /** Whether more results are available beyond this response */
   has_more: boolean;
-  /** Number of lines truncated due to `maxLineLength` */
-  truncated_lines: number;
   /** Total number of secrets redacted in this response */
   redactions: number;
-  /** Total response payload size in bytes */
-  bytes: number;
-  /** Estimated bytes the raw CLI equivalent (grep/cat/find) would have produced */
-  raw_bytes: number;
-  /** Estimated tokens saved vs raw equivalent (~4 bytes/token) */
-  tokens_saved: number;
-  /** Cumulative tokens saved across all tool calls in this session */
-  session_tokens_saved: number;
-  /** Which limit caused the response to stop, if any */
-  constrained_by?: 'maxResultCount' | 'maxResponseBytes' | 'maxLineLength';
 }
 
 /**
@@ -48,9 +36,9 @@ export interface SearchResult {
   /** Matching line content (with secrets redacted) */
   content: string;
   /** Lines before the match (with secrets redacted) */
-  context_before: string[];
+  context_before?: string[];
   /** Lines after the match (with secrets redacted) */
-  context_after: string[];
+  context_after?: string[];
   /** Whether any secrets were redacted in this result */
   redacted: boolean;
 }
@@ -153,8 +141,8 @@ export interface AuditResult {
   denylist_rules: number;
   /** Number of custom redaction patterns loaded */
   custom_patterns: number;
-  /** Per-file details (only present when `verbose: true`) */
-  details?: AuditFileDetail[];
+  /** Per-file details (only present when `verbose: true`). Compact mode returns strings. */
+  details?: AuditFileDetail[] | string[];
 }
 
 /** Per-file detail in a verbose audit report. */

@@ -4,6 +4,7 @@ import { getDefaultConfig } from '../../src/config/defaults.js';
 import { handleSecureRead } from '../../src/tools/read/secure-read.js';
 import { handleSecureSearch } from '../../src/tools/read/secure-search.js';
 import { handleSecureGlob } from '../../src/tools/read/secure-glob.js';
+import { SearchResult, GlobResult } from '../../src/types/response.js';
 import path from 'node:path';
 
 describe('Read Pipeline Integration', () => {
@@ -59,8 +60,7 @@ describe('Read Pipeline Integration', () => {
       if ('results' in result) {
         expect(result.meta.total).toBeGreaterThan(0);
         expect(result.meta.returned).toBeGreaterThan(0);
-        expect(typeof result.meta.bytes).toBe('number');
-        expect(result.meta.bytes).toBeGreaterThan(0);
+        expect(typeof result.meta.redactions).toBe('number');
       }
     });
 
@@ -84,10 +84,10 @@ describe('Read Pipeline Integration', () => {
 
   describe('secure_search full pipeline', () => {
     it('finds matches and redacts secrets in results', async () => {
-      const result = await handleSecureSearch(mw, { pattern: 'API_KEY' });
+      const result = await handleSecureSearch(mw, { pattern: 'API_KEY', compact: false });
       expect('results' in result).toBe(true);
       if ('results' in result) {
-        const matches = result.results;
+        const matches = result.results as SearchResult[];
         expect(Array.isArray(matches)).toBe(true);
         // Should find matches in config.ts but secret values should be redacted
         for (const match of matches) {
@@ -97,10 +97,10 @@ describe('Read Pipeline Integration', () => {
     });
 
     it('does not return results from denied files', async () => {
-      const result = await handleSecureSearch(mw, { pattern: 'DATABASE_URL' });
+      const result = await handleSecureSearch(mw, { pattern: 'DATABASE_URL', compact: false });
       expect('results' in result).toBe(true);
       if ('results' in result) {
-        for (const match of result.results) {
+        for (const match of result.results as SearchResult[]) {
           expect(match.file).not.toBe('.env');
         }
       }
@@ -115,10 +115,10 @@ describe('Read Pipeline Integration', () => {
     });
 
     it('supports file_pattern filtering', async () => {
-      const result = await handleSecureSearch(mw, { pattern: 'export', file_pattern: '*.ts' });
+      const result = await handleSecureSearch(mw, { pattern: 'export', file_pattern: '*.ts', compact: false });
       expect('results' in result).toBe(true);
       if ('results' in result) {
-        for (const match of result.results) {
+        for (const match of result.results as SearchResult[]) {
           expect(match.file).toMatch(/\.ts$/);
         }
       }
@@ -130,11 +130,11 @@ describe('Read Pipeline Integration', () => {
       const result = await handleSecureGlob(mw, { pattern: '*.ts' });
       expect('results' in result).toBe(true);
       if ('results' in result) {
-        const files = result.results;
+        const files = result.results as string[];
         expect(files.length).toBeGreaterThan(0);
         for (const file of files) {
-          expect(file.path).toMatch(/\.ts$/);
-          expect(file.path).not.toContain('.env');
+          expect(file).toMatch(/\.ts$/);
+          expect(file).not.toContain('.env');
         }
       }
     });
@@ -143,8 +143,7 @@ describe('Read Pipeline Integration', () => {
       const result = await handleSecureGlob(mw, { pattern: '*' });
       expect('results' in result).toBe(true);
       if ('results' in result) {
-        const paths = result.results.map((f: { path: string }) => f.path);
-        expect(paths).toContain('package.json');
+        expect(result.results).toContain('package.json');
       }
     });
 
@@ -152,8 +151,7 @@ describe('Read Pipeline Integration', () => {
       const result = await handleSecureGlob(mw, { pattern: '**/*' });
       expect('results' in result).toBe(true);
       if ('results' in result) {
-        const paths = result.results.map((f: { path: string }) => f.path);
-        expect(paths).not.toContain('.env');
+        expect(result.results).not.toContain('.env');
       }
     });
   });

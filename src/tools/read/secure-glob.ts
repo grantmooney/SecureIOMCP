@@ -15,35 +15,32 @@ export interface SecureGlobParams {
   max_results?: number;
   /** Offset for pagination */
   offset?: number;
+  /** Compact output format (default: true). Set false for structured objects with size. */
+  compact?: boolean;
 }
 
 /**
  * Handles the `secure_glob` MCP tool: finds files by glob pattern.
- * Returns file paths and sizes only (no content). Respects access control
+ * Returns file paths (compact) or paths+sizes (structured). Respects access control
  * and never returns denylist files. Supports pagination.
  *
  * @param mw - Security middleware instance
  * @param params - Tool parameters including the glob pattern
- * @returns Paginated list of matching file paths and sizes, or a safe error response
+ * @returns Paginated list of matching files, or a safe error response
  */
 export async function handleSecureGlob(
   mw: SecurityMiddleware,
   params: SecureGlobParams,
-): Promise<SecureResponse<GlobResult[]> | { error: SecureIOError }> {
+): Promise<SecureResponse<(GlobResult | string)[]> | { error: SecureIOError }> {
   const startTime = Date.now();
   const searchRoot = params.path ?? '.';
   const offset = params.offset ?? 0;
-  const builder = new ResponseBuilder<GlobResult>(
-    mw.config.limits,
-    offset,
-    (raw, efficient) => mw.recordSavings(raw, efficient),
-  );
+  const compact = params.compact ?? true;
   const skipDirs = new Set(['node_modules', '.git', 'dist', 'build', 'vendor']);
 
-  let totalMatches = 0;
-  let skipped = 0;
-
-  // Convert glob pattern to regex
+  // Collect all matching paths first
+  const matchedPaths: string[] = [];
+  const matchedFullPaths: string[] = [];
   const globRegex = globToRegex(params.pattern);
 
   async function walk(dir: string): Promise<void> {
@@ -62,32 +59,11 @@ export async function handleSecureGlob(
         if (skipDirs.has(entry.name)) continue;
         await walk(fullPath);
       } else if (entry.isFile()) {
-        // Check access control
         if (!mw.accessControl.isAllowed(relativePath)) continue;
-
-        // Check glob pattern
         if (!globRegex.test(relativePath) && !globRegex.test(entry.name)) continue;
 
-        totalMatches++;
-        // Raw bytes: what `find -ls` would output per file (path + stat metadata)
-        builder.addRawBytes(Buffer.byteLength(relativePath, 'utf-8') + 80);
-
-        if (skipped < offset) {
-          skipped++;
-          continue;
-        }
-
-        try {
-          const stat = await fsp.stat(fullPath);
-          const added = builder.add({
-            path: relativePath,
-            size: stat.size,
-          });
-          if (!added) return; // Stop walking if builder is full
-        } catch {
-          // Skip files we can't stat
-          continue;
-        }
+        matchedPaths.push(relativePath);
+        matchedFullPaths.push(fullPath);
       }
     }
   }
@@ -95,7 +71,39 @@ export async function handleSecureGlob(
   const absSearchRoot = path.resolve(mw.config.projectRoot, searchRoot);
   await walk(absSearchRoot);
 
-  builder.setTotal(totalMatches);
+  const totalMatches = matchedPaths.length;
+
+  let response: SecureResponse<(GlobResult | string)[]>;
+
+  if (compact) {
+    const builder = new ResponseBuilder<string>(mw.config.limits, offset);
+    let skipped = 0;
+
+    for (const relativePath of matchedPaths) {
+      if (skipped < offset) { skipped++; continue; }
+      if (!builder.add(relativePath)) break;
+    }
+
+    builder.setTotal(totalMatches);
+    response = builder.build();
+  } else {
+    const builder = new ResponseBuilder<GlobResult>(mw.config.limits, offset);
+    let skipped = 0;
+
+    for (let idx = 0; idx < matchedPaths.length; idx++) {
+      if (skipped < offset) { skipped++; continue; }
+
+      try {
+        const stat = await fsp.stat(matchedFullPaths[idx]);
+        if (!builder.add({ path: matchedPaths[idx], size: stat.size })) break;
+      } catch {
+        continue;
+      }
+    }
+
+    builder.setTotal(totalMatches);
+    response = builder.build();
+  }
 
   await mw.auditLogger.log({
     tool: 'secure_glob',
@@ -106,7 +114,7 @@ export async function handleSecureGlob(
     duration_ms: Date.now() - startTime,
   });
 
-  return builder.build();
+  return response;
 }
 
 /**

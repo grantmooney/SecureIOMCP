@@ -1,7 +1,6 @@
 import { SecurityMiddleware } from '../../security/middleware.js';
 import { TreeEntry, SecureResponse } from '../../types/response.js';
 import { SecureIOError } from '../../types/errors.js';
-import { estimateTokensSaved } from '../../response.js';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 
@@ -32,8 +31,6 @@ export async function handleSecureTree(
   const skipDirs = new Set(['node_modules', '.git', 'dist', 'build', 'vendor']);
 
   const absRoot = path.resolve(mw.config.projectRoot, treePath);
-  let rawPathBytes = 0;
-  let totalEntries = 0;
 
   async function buildTree(dir: string, depth: number): Promise<TreeEntry> {
     const name = path.basename(dir);
@@ -66,14 +63,10 @@ export async function handleSecureTree(
 
       if (item.isDirectory()) {
         if (skipDirs.has(item.name)) continue;
-        totalEntries++;
-        rawPathBytes += Buffer.byteLength(relativePath, 'utf-8');
         const childTree = await buildTree(fullPath, depth + 1);
         entry.children!.push(childTree);
       } else if (item.isFile()) {
         if (!mw.accessControl.isAllowed(relativePath)) continue;
-        totalEntries++;
-        rawPathBytes += Buffer.byteLength(relativePath, 'utf-8');
         fileCount++;
         entry.children!.push({ name: item.name, type: 'file' });
       }
@@ -94,12 +87,6 @@ export async function handleSecureTree(
     duration_ms: Date.now() - startTime,
   });
 
-  // Raw bytes: what `find .` would output (one path per line)
-  const rawBytes = rawPathBytes + totalEntries * 2; // newline + separator per entry
-  const efficientBytes = Buffer.byteLength(JSON.stringify(tree), 'utf-8');
-  const tokensSaved = estimateTokensSaved(rawBytes, efficientBytes);
-  const sessionTokensSaved = mw.recordSavings(rawBytes, efficientBytes);
-
   return {
     results: tree,
     meta: {
@@ -107,12 +94,7 @@ export async function handleSecureTree(
       returned: 1,
       offset: 0,
       has_more: false,
-      truncated_lines: 0,
       redactions: 0,
-      bytes: efficientBytes,
-      raw_bytes: rawBytes,
-      tokens_saved: tokensSaved,
-      session_tokens_saved: sessionTokensSaved,
     },
   };
 }

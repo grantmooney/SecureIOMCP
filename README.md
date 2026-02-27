@@ -63,6 +63,34 @@ npx secureio-mcp
 }
 ```
 
+### Restrict Native File Access
+
+For best results, configure your AI agent to prefer SecureIOMCP tools over native file access tools. This ensures all file operations go through the security layer.
+
+**Claude Code** — add to your project `CLAUDE.md`:
+
+```markdown
+## File Access Rules
+
+- ALWAYS use secure_read instead of the Read tool or cat/head/tail
+- ALWAYS use secure_search instead of the Grep tool or grep/rg
+- ALWAYS use secure_glob instead of the Glob tool or find/ls
+- ALWAYS use secure_write instead of the Write tool
+- ALWAYS use secure_patch instead of the Edit tool or sed/awk
+- ALWAYS use secure_diff instead of git diff
+- ALWAYS use secure_tree instead of tree or ls -R
+```
+
+**Cursor** — add to `.cursor/rules`:
+
+```
+Always prefer SecureIOMCP tools (secure_read, secure_search, secure_glob, secure_write,
+secure_patch, secure_diff, secure_tree) over native file access tools (Read, Grep, Glob,
+Write, Edit, cat, grep, find, sed). These tools enforce secret redaction and access control.
+```
+
+**Copilot** — native tool restriction is not currently configurable. Copilot will select SecureIOMCP tools based on tool descriptions when they are a better fit.
+
 ### Verify Installation
 
 ```bash
@@ -115,7 +143,7 @@ Read a file with automatic secret redaction.
     "redacted_lines": [3],
     "encoding_detected": "utf-8"
   },
-  "meta": { "total": 120, "returned": 50, "has_more": true, "redactions": 1 }
+  "meta": { "total": 120, "returned": 50, "offset": 0, "has_more": true, "redactions": 1 }
 }
 ```
 
@@ -128,9 +156,23 @@ Search across files with regex pattern matching and redaction.
 | `pattern` | string | Yes | Regex pattern to search for |
 | `path` | string | No | Scope search to subdirectory |
 | `file_pattern` | string | No | File glob filter (e.g., `*.ts`) |
-| `context_lines` | number | No | Context lines around match (default: 2) |
+| `context_lines` | number | No | Context lines around match (default: 0) |
 | `max_results` | number | No | Maximum results to return |
 | `offset` | number | No | Offset for pagination |
+| `compact` | boolean | No | Compact output format (default: true) |
+
+**Compact mode** (default) returns grep-like strings:
+
+```json
+{
+  "results": [
+    "src/db.ts:15:const conn = [REDACTED:CONNECTION_STRING];"
+  ],
+  "meta": { "total": 3, "returned": 3, "offset": 0, "has_more": false, "redactions": 1 }
+}
+```
+
+**Structured mode** (`compact: false`) returns objects with optional context:
 
 ```json
 {
@@ -144,7 +186,7 @@ Search across files with regex pattern matching and redaction.
       "redacted": true
     }
   ],
-  "meta": { "total": 3, "returned": 3, "has_more": false, "redactions": 1 }
+  "meta": { "total": 3, "returned": 3, "offset": 0, "has_more": false, "redactions": 1 }
 }
 ```
 
@@ -158,6 +200,18 @@ Find files by glob pattern, respecting access control.
 | `path` | string | No | Scope search to subdirectory |
 | `max_results` | number | No | Maximum results to return |
 | `offset` | number | No | Offset for pagination |
+| `compact` | boolean | No | Compact output format (default: true) |
+
+**Compact mode** (default) returns path strings:
+
+```json
+{
+  "results": ["src/index.ts", "src/server.ts"],
+  "meta": { "total": 42, "returned": 42, "offset": 0, "has_more": false, "redactions": 0 }
+}
+```
+
+**Structured mode** (`compact: false`) returns objects with file sizes:
 
 ```json
 {
@@ -165,7 +219,7 @@ Find files by glob pattern, respecting access control.
     { "path": "src/index.ts", "size": 1234 },
     { "path": "src/server.ts", "size": 2345 }
   ],
-  "meta": { "total": 42, "returned": 42, "has_more": false }
+  "meta": { "total": 42, "returned": 42, "offset": 0, "has_more": false, "redactions": 0 }
 }
 ```
 
@@ -269,7 +323,13 @@ Security scan report showing blocked files and detected secrets.
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `path` | string | No | Scope audit to subdirectory |
-| `verbose` | boolean | No | Include per-file details |
+| `verbose` | boolean | No | Include per-file details (paginated) |
+| `show_blocked` | boolean | No | Include blocked files in verbose details (default: false) |
+| `compact` | boolean | No | Compact output format (default: true) |
+| `offset` | number | No | Number of detail entries to skip (verbose mode only) |
+| `max_results` | number | No | Maximum detail entries to return (verbose mode only) |
+
+Summary counts (`files_blocked`, `secrets_detected`, `files_with_secrets`) always reflect the full scan regardless of pagination. Only the `details` array is paginated. By default, verbose mode only shows files with findings (secrets). Use `show_blocked: true` to also include blocked files in the details.
 
 ```json
 {
@@ -284,7 +344,7 @@ Security scan report showing blocked files and detected secrets.
 }
 ```
 
-In verbose mode, includes `details` array with per-file breakdown of blocked status and redaction locations.
+In verbose mode with compact format (default), details are strings: `path:line1:cat1,line2:cat2` for findings, `path:blocked` for blocked files. With `compact: false`, includes structured `AuditFileDetail` objects.
 
 #### `secure_overview`
 
@@ -526,15 +586,12 @@ Every tool response uses a standard envelope:
     "returned": 50,
     "offset": 0,
     "has_more": true,
-    "truncated_lines": 3,
-    "redactions": 2,
-    "bytes": 12840,
-    "constrained_by": "maxResultCount"
+    "redactions": 2
   }
 }
 ```
 
-The `meta` object tells agents exactly what they haven't seen, enabling strategic pagination. The `constrained_by` field indicates which limit stopped the response.
+The `meta` object tells agents exactly what they haven't seen, enabling strategic pagination.
 
 ---
 

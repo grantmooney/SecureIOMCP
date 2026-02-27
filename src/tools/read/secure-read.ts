@@ -1,7 +1,6 @@
 import { SecurityMiddleware } from '../../security/middleware.js';
 import { ReadResult, SecureResponse } from '../../types/response.js';
 import { SecureIOError } from '../../types/errors.js';
-import { estimateTokensSaved } from '../../response.js';
 
 /** Parameters for the `secure_read` MCP tool. */
 export interface SecureReadParams {
@@ -70,12 +69,6 @@ export async function handleSecureRead(
       duration_ms: Date.now() - startTime,
     });
 
-    // Raw bytes: what `cat` would return (entire file)
-    const rawBytes = Buffer.byteLength(content, 'utf-8');
-    const efficientBytes = Buffer.byteLength(selectedContent, 'utf-8');
-    const tokensSaved = estimateTokensSaved(rawBytes, efficientBytes);
-    const sessionTokensSaved = mw.recordSavings(rawBytes, efficientBytes);
-
     return {
       results: {
         path: params.path,
@@ -91,12 +84,7 @@ export async function handleSecureRead(
         returned: selectedLines.length,
         offset: start - 1,
         has_more: end < allLines.length,
-        truncated_lines: 0,
         redactions: rangeRedactedLines.length,
-        bytes: efficientBytes,
-        raw_bytes: rawBytes,
-        tokens_saved: tokensSaved,
-        session_tokens_saved: sessionTokensSaved,
       },
     };
   } catch (err: unknown) {
