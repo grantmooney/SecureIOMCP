@@ -100,4 +100,5 @@ export const MEDIUM_CONFIDENCE_PATTERNS: CompiledPattern[] = [
 export const SAFE_PATTERNS: RegExp[] = [
   /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi,
   /(?:commit|ref|sha|hash)\s*[=:]*\s*[0-9a-f]{40}/gi,
+  /sha(?:256|384|512)-[A-Za-z0-9+/=_-]+/gi,
 ];
